@@ -11,4 +11,4 @@ CAMERAS_IP = [
 PORT = "554"
 LOGIN = "admin"
 PASSWORD = "Zxcvbnm01"
-MODEL_PATH = "../models/11n_512.pt"
+MODEL_PATH = "../models/11s_1024.engine"

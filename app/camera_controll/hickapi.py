@@ -42,7 +42,7 @@ class HickTemplate:
         <pan>{}</pan>
         <tilt>{}</tilt>
         <zoom>{}</zoom>
-    </PTZData>"
+    </PTZData>
     """
 
 

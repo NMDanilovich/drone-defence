@@ -1,0 +1,17 @@
+numpy==2.1.2
+onnx==1.18.0
+onnxruntime-gpu==1.22.0
+onnxslim==0.1.61
+opencv-python==4.11.0.86
+pillow==10.4.0
+scipy==1.14.1
+seaborn==0.13.2
+sympy==1.14.0
+systemd-python==234
+tensorrt_cu12_bindings==10.12.0.36
+torch==2.5.1
+torchvision==0.20.1
+ultralytics==8.3.62
+ultralytics-thop==2.0.13
+urllib3==1.26.18
+uvicorn==0.15.0

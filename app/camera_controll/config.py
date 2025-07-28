@@ -1,14 +1,34 @@
 # --- config ---
-PTZ_IP = "192.168.85.201"
 
-CAMERAS_IP = [
-    "192.168.85.202",
-    "192.168.85.203",
-    "192.168.85.204",
-    "192.168.85.205",
-]
+AIMING = "/dev/video0"
 
-PORT = "554"
-LOGIN = "admin"
-PASSWORD = "Zxcvbnm01"
-MODEL_PATH = "../models/11s_1024.engine"
+OVERVIEW = {
+    "camera1": {
+        "ip":  "192.168.85.202",
+        "port": "554",
+        "position": "0"
+    },
+
+    "camera2": {
+        "ip":  "192.168.85.203",
+        "port": "554",
+        "position": "90"
+    },
+
+    "camera3": {
+        "ip":  "192.168.85.204",
+        "port": "554",
+        "position": "180"
+    },
+
+    "camera4": {
+        "ip":  "192.168.85.205",
+        "port": "554",
+        "position": "270"
+    },
+
+    "login": "admin",
+    "password": "Zxcvbnm01",
+}
+
+MODEL_PATH = "../models/11n_512.pt"

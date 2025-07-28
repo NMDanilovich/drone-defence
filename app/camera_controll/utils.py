@@ -1,4 +1,6 @@
 from typing import Iterable
+import threading
+import functools
 
 import cv2
 import torch
@@ -121,3 +123,24 @@ def descriptor(image: cv2.Mat) -> torch.Tensor:
     descriptor_norm = F.normalize(final_descriptor.unsqueeze(0), p=2, dim=1).squeeze(0)
     
     return descriptor_norm
+
+def threaded(*, daemon=True):
+    """
+    Decorator factory for non-blocking thread execution
+    - daemon: Thread exits with main program (default: True)
+    """
+    def decorator(func):
+        @functools.wraps(func)
+        def wrapper(*args, **kwargs):
+            # Create and start thread
+            thread = threading.Thread(
+                target=func,
+                args=args,
+                kwargs=kwargs,
+                daemon=daemon
+            )
+            thread.start()
+            
+            return thread
+        return wrapper
+    return decorator

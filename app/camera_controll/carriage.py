@@ -132,7 +132,7 @@ class CarriageTracker(Process):
             bool: True if target ID was successfully updated
         """
         x1, y1, x2, y2 = map(int, detection_result.boxes.xyxy[0])
-        object_region = frame[x1:x2, y1:y2]
+        object_region = frame[y1:y2, x1:x2]
 
         if object_region.size == 0 or detection_result.boxes.id is None:
             return False

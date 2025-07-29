@@ -1,6 +1,6 @@
 import time
 import logging
-from multiprocessing import Process
+from multiprocessing import Process, shared_memory
 
 from ultralytics import YOLO
 import torch
@@ -96,18 +96,32 @@ class Overview(Process):
         if object_info["object"] is None:
             return False
         
-        # formation message
-        object_descriptor = object_info["descriptor"].tolist()
-        x_position = object_info["center"][0] + self.sector_view * object_info["camera"]
-        y_position = 0
+        try:
+            # formation message
+            object_descriptor = object_info["descriptor"].tolist()
+            x_position = object_info["center"][0] + self.sector_view * object_info["camera"]
+            y_position = 0
 
-        message = {
-            "object_descriptor": object_descriptor, 
-            "x_position": x_position,
-            "y_position": y_position
-        }
+            message = {
+                "object_descriptor": object_descriptor, 
+                "x_position": x_position,
+                "y_position": y_position
+            }
 
-        # TODO write shared memmory for carriage process
+            json_message = json.dumps(message)
+
+            # Create shared memory block
+            shm = shared_memory.SharedMemory(
+                name="json_shm",
+                create=True, 
+                size=len(json_message)
+            )
+
+            shm.buf[:len(json_message)] = json_message.encode('utf-8')
+
+        except Exception as err:
+            print("Send object error:", err)
+    
 
     def run(self):
         # run Videostream threads

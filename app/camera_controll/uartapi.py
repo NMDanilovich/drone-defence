@@ -51,12 +51,12 @@ class Uart:
         def sender():
             try:
                 command = f"X{x_steps} Y{y_angle}\n"
+                print(command)
                 self.port.write(command.encode())
                 
                 # Ждем подтверждения
                 response = self.port.readline().decode().strip()
-                logger.info("Arduino answer:", response)
-                time.sleep(0.1)
+                logger.info("Arduino answer: %s", response)
             except Exception as error:
                 logger.error("SenderError: %s", error)
 

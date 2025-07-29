@@ -31,4 +31,4 @@ OVERVIEW = {
     "password": "Zxcvbnm01",
 }
 
-MODEL_PATH = "../models/11n_512.pt"
+MODEL_PATH = "../models/11s_1024.pt"

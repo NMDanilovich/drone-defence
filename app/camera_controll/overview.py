@@ -127,9 +127,11 @@ class Overview(Process):
                 # get bboxes
                 if len(frames) == self.num_cameras:
                     detection_results = self.model.predict(frames,  stream=True)
+                else:
+                    continue
 
                 # get nearest object
-                nearest_object = self.get_nearest_object(detection_results)
+                nearest_object = self.get_nearest_object(frames, detection_results)
 
                 # send message to one camera process 
                 if nearest_object["object"] is not None:

@@ -70,7 +70,7 @@ class Overview(Process):
             for object_index, object in enumerate(camera_results):
                 if object.boxes.cls == class_id:
 
-                    *center, w, h = object.boxes.xywh
+                    *center, w, h = object.boxes.xywh[0]
                     # x, y = center
                     object_area = w * h
 
@@ -84,8 +84,9 @@ class Overview(Process):
                         x1, y1, x2, y2 = map(int, object.boxes.xyxy[0])
                         object_region = frames[camera_index][y1:y2, x1:x2]
 
-                        if object_region.size == 0 or object.boxes.id is None:
-                            return False
+                        if object_region.size == 0:
+                            print("Very small object")
+                            continue
                         
                         nearest_object["descriptor"] = descriptor(object_region)
 

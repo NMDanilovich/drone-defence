@@ -3,12 +3,12 @@ import time
 
 import serial
 
-from utils import threaded
+from threads_utils import threaded
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-JETSON_SERIAL = '/dev/ttyTHS1' # for Jetson UART
+JETSON_SERIAL = '/dev/ttyTHS0' # for Jetson UART
 DEFAULT_BAUDRATE = 115200
 
 class Uart:
@@ -27,7 +27,6 @@ class Uart:
             baudrate=baudrate,
             parity=serial.PARITY_NONE,
             stopbits=serial.STOPBITS_ONE,
-            bytesize=serial.EIGHTBITS,
             timeout=1
         )
 

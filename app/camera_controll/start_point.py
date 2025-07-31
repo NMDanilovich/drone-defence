@@ -1,6 +1,6 @@
 from overview import Overview
-from carriage import CarriageTracker
-import config
+from tracker import Tracker
+import cfg.connactions as config
 
 def main():
     login = config.OVERVIEW["login"]
@@ -17,7 +17,7 @@ def main():
     overview.start()
 
     carriage_camera = f"rtsp://{login}:{password}@192.168.85.201:554/Streaming/channels/101"
-    tracker = CarriageTracker(
+    tracker = Tracker(
         #stream_path=config.AIMING,
         stream_path=carriage_camera,
         model_path=config.MODEL_PATH,

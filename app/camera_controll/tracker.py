@@ -1,14 +1,15 @@
-from multiprocessing import Process
+from multiprocessing import Process, shared_memory
+import json
 import logging
 
 import cv2
 from ultralytics import YOLO
 import torch.nn.functional as F
 
-from utils import BBox, descriptor
-import config
-from stream import VideoStream
-from uartapi import Uart, JETSON_SERIAL
+from src.model_utils import BBox, descriptor
+from src.stream import VideoStream
+from src.uartapi import Uart, JETSON_SERIAL
+import cfg.connactions as conn
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -28,7 +29,7 @@ COORDINATE_SCALE = 100
 DETECTOR_CONF = 0.4
 DETECTOR_IOU = 0.7
 
-class CarriageTracker(Process):
+class Tracker(Process):
     """
     A process-based drone tracker that controls camera carriage movement.
     
@@ -63,6 +64,8 @@ class CarriageTracker(Process):
         self.target_descriptor = None
         self.current_target_id = None
         self.similarity_threshold = SIMILARITY_THRESHOLD
+
+        self.shared_memory = shared_memory.SharedMemory(name="object_data")
 
     def _init_camera(self):
         cap = cv2.VideoCapture(self.stream_path)
@@ -117,8 +120,16 @@ class CarriageTracker(Process):
         Returns:
             tuple: (should_track, target_descriptor, target_position)
         """
-        # TODO: Implement actual communication with overview module
-        return True, DEBUG_DESCRIPTOR, 1
+
+        try:
+            received_json = bytes(self.shared_memory.buf[:]).decode('utf-8').strip('\x00')  # Remove padding
+            data = json.loads(received_json)
+
+            return True, data["descriptor"], (data["x_position"], data["y_position"])
+
+        except Exception as error:
+            print("Get object iformation error:", error)
+            return False, None, None
 
     def update_target_id(self, frame, detection_result):
         """
@@ -207,6 +218,10 @@ class CarriageTracker(Process):
         
         return frame
 
+    def __del__(self):
+        self.shared_memory.close()
+        self.shared_memory.unlink()
+
     def run(self):
         """Main tracking loop."""
         stream = VideoStream(self.stream_path)
@@ -284,11 +299,11 @@ class CarriageTracker(Process):
 def main():
     """Main function for standalone execution."""
 
-    tracker = CarriageTracker(
-        stream_path=config.AIMING,
-        model_path=config.MODEL_PATH
+    tracker = Tracker(
+        stream_path=conn.AIMING,
+        model_path=conn.MODEL_PATH
     )
     tracker.start()
 
-if __name__ =="__main__":
+if __name__ == "__main__":
     main()

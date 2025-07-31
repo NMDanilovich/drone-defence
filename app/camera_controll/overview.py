@@ -3,12 +3,11 @@ import logging
 from multiprocessing import Process, shared_memory
 
 from ultralytics import YOLO
-import torch
 import json
 
-from stream import VideoStream
-from utils import descriptor
-import config
+from src.stream import VideoStream
+from src.model_utils import descriptor
+import cfg.connactions as config
 
 DRONE_CLASS_ID = 1
 ANGLE_OF_VIEW = 360
@@ -33,6 +32,8 @@ class Overview(Process):
         self.streams_path = [template.format(login, password, ip, port) for ip, port in zip(self.cameras_ips, self.cameras_ports)]
 
         self.model = YOLO(model_path, task="detect")
+
+        self.shared_memory = None
 
     def get_nearest_object(self, frames, detection_results, class_id:int=DRONE_CLASS_ID) -> dict:
         """Function getting dict with information about nearest object
@@ -112,13 +113,14 @@ class Overview(Process):
             json_message = json.dumps(message)
 
             # Create shared memory block
-            shm = shared_memory.SharedMemory(
-                name="json_shm",
-                create=True, 
-                size=len(json_message)
-            )
+            if self.shared_memory is not None:
+                self.shared_memory = shared_memory.SharedMemory(
+                    name="object_data",
+                    create=True, 
+                    size=len(json_message)
+                )
 
-            shm.buf[:len(json_message)] = json_message.encode('utf-8')
+            self.shared_memory.buf[:len(json_message)] = json_message.encode('utf-8')
 
         except Exception as err:
             print("Send object error:", err)

@@ -1,8 +1,9 @@
 import logging
+import time
 
 import torch.nn.functional as F
 
-import cfg.carriage_cfg as carr
+import carriage_cfg as carr
 from uartapi import Uart, JETSON_SERIAL
 
 # Configure logging
@@ -21,6 +22,8 @@ class CarriageController:
                  max_x_steps=carr.MAX_X_COORD, 
                  max_y_angle=carr.MAX_Y_COORD, 
                  min_y_angle=carr.MIN_Y_COORD, 
+                 start_x_pos=carr.START_X_POSITION,
+                 start_y_pos=carr.START_Y_POSITION,
                  step_size=10, 
                  angle_step=1
         ):
@@ -45,12 +48,13 @@ class CarriageController:
         self.max_y_angle = max_y_angle
         self.min_y_angle = min_y_angle
         
-        # Movement parameters
-        self.step_size = step_size
-        self.angle_step = angle_step
-        
         # UART communication
         self.uart = Uart(uart_path)
+
+        # setup start position
+        self.start_x_pos = start_x_pos
+        self.start_y_pos = start_y_pos
+        self.move_to_absolute(self.start_x_pos, self.start_y_pos)
         
         logger.info(f"CarriageController initialized - X range: [{self.min_x_steps}, {self.max_x_steps}], "
                    f"Y range: [{self.min_y_angle}, {self.max_y_angle}]")
@@ -131,22 +135,6 @@ class CarriageController:
         """
         return (self.current_x_steps, self.current_y_angle)
            
-    def set_movement_parameters(self, step_size=None, angle_step=None):
-        """
-        Update movement parameters.
-        
-        Args:
-            step_size (int): New step size for X axis
-            angle_step (float): New angle step for Y axis
-        """
-        if step_size is not None:
-            self.step_size = step_size
-            logger.info(f"Step size updated to: {self.step_size}")
-            
-        if angle_step is not None:
-            self.angle_step = angle_step
-            logger.info(f"Angle step updated to: {self.angle_step}")
-    
     def _send_absolute_position(self):
         """Send current absolute position via UART."""
         try:
@@ -157,9 +145,10 @@ class CarriageController:
 
     def reset_position(self):
         """Reset position tracking to (0, 0) without moving."""
-        self.current_x_steps = 0
-        self.current_y_angle = 0
-        logger.info("Position reset to (0, 0)")
+        self.current_x_steps = self.start_x_pos
+        self.current_y_angle = self.start_y_pos
+        self.move_to_absolute(self.start_x_pos, self.start_y_pos)
+        logger.info("Position reset to start")
     
     def get_status(self):
         """
@@ -176,13 +165,8 @@ class CarriageController:
             'limits': {
                 'x_range': [self.min_x_steps, self.max_x_steps],
                 'y_range': [self.min_y_angle, self.max_y_angle]
-            },
-            'parameters': {
-                'step_size': self.step_size,
-                'angle_step': self.angle_step
-            },
-            'normalized_position': self.get_relative_position_normalized(),
-        }
+            }
+            }
 
 def demo_carriage_controller():
     """Demo function showing CarriageController usage."""
@@ -192,11 +176,6 @@ def demo_carriage_controller():
     # Initialize controller
     controller = CarriageController(
         uart_path=JETSON_SERIAL,
-        max_x_steps=5000,
-        max_y_angle=45,
-        min_y_angle=-45,
-        step_size=50,
-        angle_step=2
     )
     
     # Show initial status
@@ -207,14 +186,23 @@ def demo_carriage_controller():
     print()
     
     # Example movements
-    print("Moving to absolute position (500, 10)...")
-    controller.move_to_absolute(500, 10)
+    #print("Moving to absolute position (500, 10)...")
+    # controller.move_relative(0, -20)
+    # time.sleep(1)
+    # controller.move_relative(0, -20)
+    # time.sleep(1)
+    # controller.move_relative(0, 15)
+    # time.sleep(1)
+    # controller.move_relative(0, 15)
+    # time.sleep(1)
+    # controller.move_relative(0, 15)    
+    # time.sleep(1)
+    # controller.move_relative(0, 15)
+
     print(f"New position: {controller.get_position()}")
 
 
     print("\nDemo completed!")
 
 if __name__ == "__main__":
-    import sys
-    if len(sys.argv) > 1 and sys.argv[1] == "demo":
-        demo_carriage_controller()
+    demo_carriage_controller()

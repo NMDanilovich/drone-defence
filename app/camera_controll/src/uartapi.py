@@ -64,6 +64,9 @@ class Uart:
 
 if __name__ == "__main__":
     uart = Uart()
-    x_step = 1000
-    y_degrees = 45
-    uart.send_coordinates(x_step, y_degrees)
+    x_step = 0
+    y_degrees = 104
+    
+    for i in range(45, y_degrees):
+        uart.send_coordinates(x_step, i)
+        time.sleep(0.1)

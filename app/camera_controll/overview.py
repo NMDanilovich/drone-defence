@@ -101,9 +101,9 @@ class Overview(Process):
         try:
             # formation message
             object_descriptor = object_info["descriptor"].tolist()
-            x_position = object_info["center"][0] + self.sector_view * object_info["camera"]
+            x_position = int(object_info["center"][0] + self.sector_view * object_info["camera"])
             y_position = 0
-
+            print(object_descriptor, x_position, y_position)
             message = {
                 "object_descriptor": object_descriptor, 
                 "x_position": x_position,
@@ -113,7 +113,7 @@ class Overview(Process):
             json_message = json.dumps(message)
 
             # Create shared memory block
-            if self.shared_memory is not None:
+            if self.shared_memory is None:
                 self.shared_memory = shared_memory.SharedMemory(
                     name="object_data",
                     create=True, 

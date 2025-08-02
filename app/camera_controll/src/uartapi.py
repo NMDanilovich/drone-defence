@@ -1,5 +1,6 @@
 import logging
 import time
+import argparse
 
 import serial
 
@@ -61,12 +62,21 @@ class Uart:
 
         return sender()
 
+def main(x_steps:int=0, y_degrees:int=0):
+    """Main function for hand testing
+    """
+    
+    uart = Uart()
+
+    uart.send_coordinates(x_steps, y_degrees)
+    time.sleep(0.1)
 
 if __name__ == "__main__":
-    uart = Uart()
-    x_step = 0
-    y_degrees = 104
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--x", type=int)
+    parser.add_argument("--y", type=int)
+
+    args = parser.parse_args()
     
-    for i in range(45, y_degrees):
-        uart.send_coordinates(x_step, i)
-        time.sleep(0.1)
+    main(args.x, args.y)
+

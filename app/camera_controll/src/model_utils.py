@@ -35,7 +35,7 @@ class BBox(object):
             raise ValueError("Point should by the two coordinates (X and Y).")
         
     def __repr__(self):
-        return f"ROI(x={self._xywh[0]} y={self._xywh[1]} w={self._xywh[2]} h={self._xywh[3]})"
+        return f"BBox(x={self._xywh[0]} y={self._xywh[1]} w={self._xywh[2]} h={self._xywh[3]})"
 
     @property
     def xyxy(self):

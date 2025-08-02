@@ -10,8 +10,17 @@ from src.model_utils import descriptor
 import cfg.connactions as config
 
 DRONE_CLASS_ID = 1
-ANGLE_OF_VIEW = 360
-CAMERA_ANGLES = 112
+BUFF_SIZE = 10_000
+
+
+WIDTH_FRAME = 1920
+ANGLE_OF_VEIW = 360
+CAMERA_ANGLES = 110
+STEPS_PER_DEGREE = 10_000 / 90
+
+def calculate_steps(coordinate):
+
+    return CAMERA_ANGLES * STEPS_PER_DEGREE * (0.5 - coordinate / WIDTH_FRAME)
 
 class Overview(Process):
     """
@@ -26,7 +35,7 @@ class Overview(Process):
         self.cameras_ips = cameras_ips
         self.cameras_ports = cameras_ports
         self.num_cameras = len(cameras_ips)
-        self.sector_view = ANGLE_OF_VIEW / self.num_cameras
+        self.sector_view = ANGLE_OF_VEIW / self.num_cameras
 
         template = "rtsp://{}:{}@{}:{}/Streaming/channels/101"
         self.streams_path = [template.format(login, password, ip, port) for ip, port in zip(self.cameras_ips, self.cameras_ports)]
@@ -34,6 +43,8 @@ class Overview(Process):
         self.model = YOLO(model_path, task="detect")
 
         self.shared_memory = None
+
+        self.running = True
 
     def get_nearest_object(self, frames, detection_results, class_id:int=DRONE_CLASS_ID) -> dict:
         """Function getting dict with information about nearest object
@@ -92,18 +103,33 @@ class Overview(Process):
                         nearest_object["descriptor"] = descriptor(object_region)
 
         return nearest_object
+
+    def cleanup(self):
+        """Clean up shared memory resources."""
+        try:
+            self.shared_memory.close()
+            self.shared_memory.unlink()
+        except FileNotFoundError:
+            logging.info(f"Shared memory was already unlinked.")
+        except Exception as e:
+            logging.error(f"Error during sender cleanup: {e}")
+
+        finally:
+            self.shared_memory = None
     
     def send_object_info(self, object_info: dict) -> bool:
+        
         
         if object_info["object"] is None:
             return False
         
         try:
+            
             # formation message
             object_descriptor = object_info["descriptor"].tolist()
-            x_position = int(object_info["center"][0] + self.sector_view * object_info["camera"])
+            x_position = int(calculate_steps(object_info["center"][0]) + 4500)
             y_position = 0
-            print(object_descriptor, x_position, y_position)
+
             message = {
                 "object_descriptor": object_descriptor, 
                 "x_position": x_position,
@@ -111,16 +137,22 @@ class Overview(Process):
             }
 
             json_message = json.dumps(message)
+            json_bytes = json_message.encode('utf-8')
 
             # Create shared memory block
             if self.shared_memory is None:
+                json_bytes = json_message.encode('utf-8')
                 self.shared_memory = shared_memory.SharedMemory(
                     name="object_data",
                     create=True, 
-                    size=len(json_message)
+                    size=BUFF_SIZE
                 )
+            
+            # clear tail buffer
+            self.shared_memory.buf[:] = b"\x00" * BUFF_SIZE
 
-            self.shared_memory.buf[:len(json_message)] = json_message.encode('utf-8')
+            # json information to buffer
+            self.shared_memory.buf[:len(json_bytes)] = json_bytes
 
         except Exception as err:
             print("Send object error:", err)
@@ -131,7 +163,7 @@ class Overview(Process):
         streams = [VideoStream(path) for path in self.streams_path]
 
         try:
-            while True:
+            while self.running:
                 start = time.time()
 
                 # get video frames
@@ -160,6 +192,12 @@ class Overview(Process):
             for stream in streams:
                 stream.stop()
 
+            self.cleanup()
+
+    def stop(self):
+        """Stoped process"""
+        self.running = False
+
 def main():
     """Main function for running process
     """
@@ -175,7 +213,13 @@ def main():
         cameras_ips=cameras_ips, 
         cameras_ports=cameras_ports, 
         model_path=config.MODEL_PATH)
-    overview.start()
+    
+    try:
+        overview.start()
+        overview.join()
+    except KeyboardInterrupt:
+        overview.stop()
+        overview.join()
 
 if __name__ == "__main__":
     main()

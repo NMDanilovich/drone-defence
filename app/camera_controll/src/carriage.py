@@ -1,15 +1,16 @@
-import logging
+import argparse
 import time
+import logging
 
-import torch.nn.functional as F
 
-import carriage_cfg as carr
+from config_utils import CarriageConfig
 from uartapi import Uart, JETSON_SERIAL
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+conf = CarriageConfig()
 
 class CarriageController:
     """
@@ -19,11 +20,11 @@ class CarriageController:
     
     def __init__(self, 
                  uart_path=JETSON_SERIAL, 
-                 max_x_steps=carr.MAX_X_COORD, 
-                 max_y_angle=carr.MAX_Y_COORD, 
-                 min_y_angle=carr.MIN_Y_COORD, 
-                 start_x_pos=carr.START_X_POSITION,
-                 start_y_pos=carr.START_Y_POSITION,
+                 max_x_steps=conf.MAX_X_COORD, 
+                 max_y_angle=conf.MAX_Y_COORD, 
+                 min_y_angle=conf.MIN_Y_COORD, 
+                 start_x_pos=conf.START_X_POSITION,
+                 start_y_pos=conf.START_Y_POSITION,
         ):
         """
         Initialize the carriage controller.
@@ -169,41 +170,35 @@ class CarriageController:
             }
             }
 
-def demo_carriage_controller():
-    """Demo function showing CarriageController usage."""
-    print("CarriageController Demo")
-    print("=" * 50)
+def main(x_steps:int=0, y_degrees:int=0):
+    """Main function for hand testing
+    """
     
     # Initialize controller
     controller = CarriageController(
         uart_path=JETSON_SERIAL,
     )
-    
+
     # Show initial status
     print("Initial status:")
     status = controller.get_status()
     print(f"Position: {status['position']}")
     print(f"Limits: {status['limits']}")
     print()
+    # controller.move_to_start()
+    controller.move_relative(x_steps, y_degrees)
+    position = controller.get_position()
+    conf.LAST_X_POSITION, conf.LAST_Y_POSITION = position
+    conf.write()
     
-    # Example movements
-    #print("Moving to absolute position (500, 10)...")
-    # controller.move_relative(0, -20)
-    # time.sleep(1)
-    # controller.move_relative(0, -20)
-    # time.sleep(1)
-    # controller.move_relative(0, 15)
-    # time.sleep(1)
-    # controller.move_relative(0, 15)
-    # time.sleep(1)
-    # controller.move_relative(0, 15)    
-    # time.sleep(1)
-    # controller.move_relative(0, 15)
-
     print(f"New position: {controller.get_position()}")
 
 
-    print("\nDemo completed!")
-
 if __name__ == "__main__":
-    demo_carriage_controller()
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--x", type=int, default=0)
+    parser.add_argument("--y", type=int, default=0)
+
+    args = parser.parse_args()
+    
+    main(args.x, args.y)

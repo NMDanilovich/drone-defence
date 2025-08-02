@@ -24,8 +24,6 @@ class CarriageController:
                  min_y_angle=carr.MIN_Y_COORD, 
                  start_x_pos=carr.START_X_POSITION,
                  start_y_pos=carr.START_Y_POSITION,
-                 step_size=10, 
-                 angle_step=1
         ):
         """
         Initialize the carriage controller.
@@ -35,8 +33,8 @@ class CarriageController:
             max_x_steps (int): Maximum X axis steps (positive direction)
             max_y_angle (int): Maximum Y axis angle in degrees
             min_y_angle (int): Minimum Y axis angle in degrees
-            step_size (int): Default step size for X axis movements
-            angle_step (float): Default angle step for Y axis movements
+            start_x_pos (int): Default X axis position 
+            start_y_pos (int): Default Y axis position 
         """
         # Current absolute position
         self.current_x_steps = 0  # Current absolute X position in steps
@@ -54,11 +52,14 @@ class CarriageController:
         # setup start position
         self.start_x_pos = start_x_pos
         self.start_y_pos = start_y_pos
-        self.move_to_absolute(self.start_x_pos, self.start_y_pos)
-        
+
         logger.info(f"CarriageController initialized - X range: [{self.min_x_steps}, {self.max_x_steps}], "
                    f"Y range: [{self.min_y_angle}, {self.max_y_angle}]")
-    
+
+    def move_to_start(self):
+        """Moves the carriage platform to the starting position"""
+        self.move_to_absolute(self.start_x_pos, self.start_y_pos)
+
     def move_relative(self, delta_x=0, delta_y=0):
         """
         Move carriage by relative amounts and send absolute position via UART.

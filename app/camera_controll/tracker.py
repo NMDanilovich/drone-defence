@@ -8,7 +8,7 @@ import torch.nn.functional as F
 
 from src.model_utils import BBox, descriptor
 from src.stream import VideoStream
-from src.uartapi import Uart, JETSON_SERIAL
+from src.carriage import CarriageController
 import cfg.connactions as conn
 
 # Configure logging
@@ -36,7 +36,7 @@ class Tracker(Process):
     This class tracks drones in video stream and sends movement commands
     to control the camera carriage via UART communication.
     """
-    def __init__(self, stream_path, model_path, controller_path=JETSON_SERIAL):
+    def __init__(self, stream_path, model_path):
         super().__init__()
 
         # --- stream configuration ---
@@ -49,7 +49,7 @@ class Tracker(Process):
         
         # --- initialize AI model and UART controller ---
         self.model = YOLO(model_path, task="detect")
-        self.uart = Uart(controller_path)
+        self.controller = CarriageController()
 
         # --- set image areas ---
         self._setup_tracking_areas()
@@ -65,7 +65,10 @@ class Tracker(Process):
         self.current_target_id = None
         self.similarity_threshold = SIMILARITY_THRESHOLD
 
-        self.shared_memory = shared_memory.SharedMemory(name="object_data")
+        self.memory_name: str = "object_data" 
+
+        self.shared_memory = None
+        self._last_data_hash = None
 
     def _init_camera(self):
         cap = cv2.VideoCapture(self.stream_path)
@@ -121,16 +124,49 @@ class Tracker(Process):
             tuple: (should_track, target_descriptor, target_position)
         """
 
+        # Create shared memory
+        if self.shared_memory is None:
+            self.shared_memory = shared_memory.SharedMemory(name=self.memory_name)
+
         try:
-            received_json = bytes(self.shared_memory.buf[:]).decode('utf-8').strip('\x00')  # Remove padding
+            # read the bytes from shared memory
+            raw_bytes = self.shared_memory.buf[:]
+
+            received_json = bytes(raw_bytes).decode('utf-8').strip('\x00')  # Remove padding
+            
+            current_hash = hash(received_json)
+            if current_hash == self._last_data_hash:
+                return False, None, None
+            else:
+                self._last_data_hash = current_hash       
+            
+            if received_json == "":
+                return False, None, None
+
+            # get object information
             data = json.loads(received_json)
 
-            return True, data["descriptor"], (data["x_position"], data["y_position"])
+            return True, data["object_descriptor"], (data["x_position"], data["y_position"])
 
         except Exception as error:
-            print("Get object iformation error:", error)
+            print("\rError getting object information:", error, end="")
             return False, None, None
+        
+    def cleanup(self):
+        """
+        Cleans up resources by closing the shared memory connection.
+        It does NOT unlink the memory, as the sender is responsible for that.
+        """
+        if self.shared_memory is not None:
+            try:
+                self.shared_memory.close()
+                logging.info(f"Disconnected from shared memory '{self.memory_name}'.")
+            except Exception as e:
+                print(f"Error during receiver cleanup: {e}")
 
+            finally:
+                self.shared_memory = None
+                
     def update_target_id(self, frame, detection_result):
         """
         Update the current target ID based on descriptor similarity.
@@ -231,11 +267,12 @@ class Tracker(Process):
             while True:
                 
                 # wait message
-                if not self.tracked:
-                    self.tracked, self.descriptor, position = self.get_info()
-                    self.uart.send_coordinates(*position)
+                if self.tracked is False:
+                    self.tracked, self.descriptor, position = self.get_tracking_info()
+                    if position is not None:
+                        self.controller.move_to_absolute(position)
                     continue
-                
+
                 # get video frame
                 frame = stream.read()
 
@@ -293,6 +330,7 @@ class Tracker(Process):
             logger.error(f"Unexpected error in tracking loop: {e}")
         finally:
             logger.info("Cleaning up...")
+            self.cleanup()
             stream.stop()
             cv2.destroyAllWindows()
 

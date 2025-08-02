@@ -25,6 +25,8 @@ class CarriageController:
                  min_y_angle=conf.MIN_Y_COORD, 
                  start_x_pos=conf.START_X_POSITION,
                  start_y_pos=conf.START_Y_POSITION,
+                 last_x_pos=conf.LAST_X_POSITION,
+                 last_y_pos=conf.LAST_Y_POSITION,
         ):
         """
         Initialize the carriage controller.
@@ -38,8 +40,8 @@ class CarriageController:
             start_y_pos (int): Default Y axis position 
         """
         # Current absolute position
-        self.current_x_steps = 0  # Current absolute X position in steps
-        self.current_y_angle = 0  # Current absolute Y position in degrees
+        self.current_x_steps = last_x_pos  # Current absolute X position in steps
+        self.current_y_angle = last_y_pos  # Current absolute Y position in degrees
         
         # Movement limits
         self.max_x_steps = max_x_steps
@@ -170,6 +172,17 @@ class CarriageController:
             }
             }
 
+    def save_position(self, config: CarriageConfig = conf):
+        """Write the current values of position in config file.:"""
+        
+        if isinstance(config, CarriageConfig):
+            config.LAST_X_POSITION = self.current_x_steps
+            config.LAST_Y_POSITION = self.current_y_angle
+            config.write()
+        else:
+            logger.error(ValueError, "Config object must be the CarriageConfig class")
+
+
 def main(x_steps:int=0, y_degrees:int=0):
     """Main function for hand testing
     """
@@ -185,12 +198,13 @@ def main(x_steps:int=0, y_degrees:int=0):
     print(f"Position: {status['position']}")
     print(f"Limits: {status['limits']}")
     print()
+
+    # Uncomment for moving to start position
     # controller.move_to_start()
+
     controller.move_relative(x_steps, y_degrees)
-    position = controller.get_position()
-    conf.LAST_X_POSITION, conf.LAST_Y_POSITION = position
-    conf.write()
-    
+    controller.save_position()
+
     print(f"New position: {controller.get_position()}")
 
 

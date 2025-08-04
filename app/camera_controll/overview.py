@@ -5,22 +5,22 @@ from multiprocessing import Process, shared_memory
 from ultralytics import YOLO
 import json
 
-from src.stream import VideoStream
-from src.model_utils import descriptor
-import cfg.connactions as config
+from sources import VideoStream
+from sources import descriptor
+from sources import coord_to_steps, coord_to_angle
+import configs.connactions as config
 
+# TODO move to config file
 DRONE_CLASS_ID = 1
 BUFF_SIZE = 10_000
 
-
 WIDTH_FRAME = 1920
-ANGLE_OF_VEIW = 360
-CAMERA_ANGLES = 110
-STEPS_PER_DEGREE = 10_000 / 90
+HEIGHT_FRAME = 1080
+HORIZONT_ANGLE = 110
+VERTICAL_ANGLE = 60
 
-def calculate_steps(coordinate):
-
-    return CAMERA_ANGLES * STEPS_PER_DEGREE * (0.5 - coordinate / WIDTH_FRAME)
+CALIB = [None, None, None, 4500] # 202, 203, 204, 205
+HORIZ = 119
 
 class Overview(Process):
     """
@@ -35,7 +35,6 @@ class Overview(Process):
         self.cameras_ips = cameras_ips
         self.cameras_ports = cameras_ports
         self.num_cameras = len(cameras_ips)
-        self.sector_view = ANGLE_OF_VEIW / self.num_cameras
 
         template = "rtsp://{}:{}@{}:{}/Streaming/channels/101"
         self.streams_path = [template.format(login, password, ip, port) for ip, port in zip(self.cameras_ips, self.cameras_ports)]
@@ -127,8 +126,12 @@ class Overview(Process):
             
             # formation message
             object_descriptor = object_info["descriptor"].tolist()
-            x_position = int(calculate_steps(object_info["center"][0]) + 4500)
-            y_position = 0
+            x, y = object_info["center"]
+            x_calib = CALIB[object_info["camera"]]
+            y_calib = HORIZ 
+
+            x_position = int(coord_to_steps(x, WIDTH_FRAME, HORIZONT_ANGLE) + x_calib) # steps
+            y_position = int(coord_to_angle(y, HEIGHT_FRAME, VERTICAL_ANGLE) + y_calib) # angles
 
             message = {
                 "object_descriptor": object_descriptor, 

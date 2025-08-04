@@ -6,10 +6,12 @@ import cv2
 from ultralytics import YOLO
 import torch.nn.functional as F
 
-from src.model_utils import BBox, descriptor
-from src.stream import VideoStream
-from src.carriage import CarriageController
-import cfg.connactions as conn
+from sources import BBox, descriptor
+from sources import VideoStream
+from sources import CarriageController
+from sources import coord_to_steps, coord_to_angle
+import configs.connactions as conn
+
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -19,12 +21,18 @@ logger = logging.getLogger(__name__)
 DEBUG_DESCRIPTOR = descriptor(cv2.imread("./test_drone.png"))
 
 # Constants
+# TODO move to config file
 DRONE_CLASS_ID = 1
 DEFAULT_IMAGE_SIZE = 512
 STOP_AREA_SCALE = 0.2
 SIMILARITY_THRESHOLD = 0.7
 MOVEMENT_MULTIPLIER = 2
 COORDINATE_SCALE = 100
+
+WIDTH_FRAME = 1920
+HEIGHT_FRAME = 1080
+HORIZONT_ANGLE = 110
+VERTICAL_ANGLE = 60
 
 DETECTOR_CONF = 0.4
 DETECTOR_IOU = 0.7
@@ -39,27 +47,26 @@ class Tracker(Process):
     def __init__(self, stream_path, model_path):
         super().__init__()
 
-        # --- stream configuration ---
+        # stream configuration
         self.stream_path = stream_path
 
-        # --- get camera settings ---
+        # get camera settings
         self.frame_width = None
         self.frame_height = None
         self._init_camera()
         
-        # --- initialize AI model and UART controller ---
+        # initialize AI model and UART controller
         self.model = YOLO(model_path, task="detect")
         self.controller = CarriageController()
 
-        # --- set image areas ---
+        # set image areas
         self._setup_tracking_areas()
 
-        # --- Carriage moves ---
+        # Carriage moves
         self.movement_x = 0
         self.movement_y = 0
-        self.zoom_level = 0
 
-        # --- drone information ---
+        # drone information
         self.is_tracking = False
         self.target_descriptor = None
         self.current_target_id = None
@@ -212,17 +219,9 @@ class Tracker(Process):
         target_bbox = BBox(*detection_result.boxes.xywh[0])
         
         if self.current_target_id == detection_result.boxes.id:
-            
-            center_offset_x = self.stop_area[0] - target_bbox[0]
-            center_offset_y = self.stop_area[1] - target_bbox[1]
-            
-            self.movement_x = int(
-                    center_offset_x * -MOVEMENT_MULTIPLIER * COORDINATE_SCALE // self.frame_width
-                )
-            
-            self.movement_y = int(
-                    center_offset_y * -MOVEMENT_MULTIPLIER * COORDINATE_SCALE // self.frame_height
-                )
+            x, y = target_bbox[:2]
+            self.movement_x = coord_to_steps(x, WIDTH_FRAME, HORIZONT_ANGLE)
+            self.movement_y = coord_to_angle(y, HEIGHT_FRAME, VERTICAL_ANGLE)
 
         if target_bbox in self.stop_box:
             speed = 0.1
@@ -235,7 +234,6 @@ class Tracker(Process):
         """Reset all movement commands to zero."""
         self.movement_x = 0
         self.movement_y = 0
-        self.zoom_level = 0
 
     def _draw_debug_info(self, frame):
         """Draw debug information on frame."""
@@ -308,7 +306,7 @@ class Tracker(Process):
                         logger.debug("No target found, resetting movement")
                     
                     if self.movement_x != 0 or self.movement_y != 0:
-                        self.uart.send_coordinates(self.movement_x, self.movement_y)
+                        self.controller.move_relative(self.movement_x, self.movement_y)
                     
                 except Exception as e:
                     logger.error(f"Error in detection: {e}")

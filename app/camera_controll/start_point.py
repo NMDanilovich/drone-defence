@@ -1,6 +1,6 @@
 from overview import Overview
 from tracker import Tracker
-import cfg.connactions as config
+import configs.connactions as config
 
 def main():
     login = config.OVERVIEW["login"]
@@ -21,7 +21,7 @@ def main():
         #stream_path=config.AIMING,
         stream_path=carriage_camera,
         model_path=config.MODEL_PATH,
-        controller_path="/dev/USB0"
+        controller_path="/dev/THS0"
     )
     tracker.start()
 

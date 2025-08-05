@@ -2,6 +2,7 @@ from threading import Thread
 import time
 
 import cv2
+import numpy as np
 
 class VideoStream:
     """VideoStream class. Run thread for RTSP Stream. 
@@ -46,10 +47,10 @@ class VideoStream:
             self.frame = frame
             time.sleep(0.01) # Small delay to prevent excessive CPU usage
 
-    def read(self) -> cv2.Mat:
+    def read(self) -> np.ndarray:
         """Read actual frame
         Returns:
-            cv2.Mat
+            np.ndarray
         """  
         return self.frame
 

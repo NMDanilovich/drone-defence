@@ -1,6 +1,7 @@
 from typing import Iterable
 
 import cv2
+import numpy as np
 import torch
 import torch.nn.functional as F
 
@@ -46,7 +47,7 @@ class BBox(object):
         return self._xywh
 
 
-def descriptor(image: cv2.Mat) -> torch.Tensor:
+def descriptor(image: np.ndarray) -> torch.Tensor:
     """
     Extract a feature descriptor from an image for comparison purposes.
     
@@ -55,7 +56,7 @@ def descriptor(image: cv2.Mat) -> torch.Tensor:
     image comparison tasks.
     
     Args:
-        image: Input image as cv2.Mat (BGR format)
+        image: Input image as np.ndarray (BGR format)
         
     Returns:
         torch.Tensor: Normalized feature descriptor vector

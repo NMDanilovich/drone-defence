@@ -4,7 +4,7 @@ import argparse
 
 import serial
 
-from threads_utils import threaded
+from .threads_utils import threaded
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -47,7 +47,7 @@ class Uart:
         >>> uart.send_coordinates(x_step, y_degrees)
         """
 
-        @threaded(daemon=(not self.is_blocking))
+        @threaded(is_blocking=self.is_blocking)
         def sender():
             try:
                 command = f"X{x_steps} Y{y_angle}\n"

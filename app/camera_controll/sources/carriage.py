@@ -2,14 +2,21 @@ import argparse
 import time
 import logging
 
-from config_utils import CarriageConfig
+# -----------------DEBUG---------
+import pathlib
+import sys
+
+CONFIGS = pathlib.Path(__file__).parent.parent.joinpath("configs")
+sys.path.append(str(CONFIGS))
+# ---------------------------------
+
+from configs import CarriageConfig
 from .uartapi import Uart, JETSON_SERIAL
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-conf = CarriageConfig()
 
 class CarriageController:
     """
@@ -17,43 +24,36 @@ class CarriageController:
     internally and sends absolute coordinates via UART.
     """
     
-    def __init__(self, 
-                 uart_path=JETSON_SERIAL, 
-                 max_x_steps=conf.MAX_X_COORD, 
-                 max_y_angle=conf.MAX_Y_COORD, 
-                 min_y_angle=conf.MIN_Y_COORD, 
-                 start_x_pos=conf.START_X_POSITION,
-                 start_y_pos=conf.START_Y_POSITION,
-                 last_x_pos=conf.LAST_X_POSITION,
-                 last_y_pos=conf.LAST_Y_POSITION,
-        ):
+    def __init__(self):
         """
         Initialize the carriage controller.
         
-        Args:
-            uart_path (str): Path to UART device
+        Attributes:
+            uart (str): Path to UART device
             max_x_steps (int): Maximum X axis steps (positive direction)
             max_y_angle (int): Maximum Y axis angle in degrees
             min_y_angle (int): Minimum Y axis angle in degrees
             start_x_pos (int): Default X axis position 
             start_y_pos (int): Default Y axis position 
         """
+        self.config = CarriageConfig()
+
         # Current absolute position
-        self.current_x_steps = last_x_pos  # Current absolute X position in steps
-        self.current_y_angle = last_y_pos  # Current absolute Y position in degrees
+        self.current_x_steps = self.config.LAST_X_POSITION # Current absolute X position in steps
+        self.current_y_angle = self.config.LAST_Y_POSITION  # Current absolute Y position in degrees
         
         # Movement limits
-        self.max_x_steps = max_x_steps
-        self.min_x_steps = -max_x_steps
-        self.max_y_angle = max_y_angle
-        self.min_y_angle = min_y_angle
+        self.max_x_steps = self.config.MAX_X_COORD
+        self.min_x_steps = self.config.MIN_X_COORD
+        self.max_y_angle = self.config.MAX_Y_COORD
+        self.min_y_angle = self.config.MIN_Y_COORD
         
         # UART communication
-        self.uart = Uart(uart_path)
+        self.uart = Uart(self.config.SERIAL_PORT, baudrate=self.config.BAUDRATE, is_blocking=False)
 
         # setup start position
-        self.start_x_pos = start_x_pos
-        self.start_y_pos = start_y_pos
+        self.start_x_pos = self.config.START_X_POSITION
+        self.start_y_pos = self.config.START_Y_POSITION
 
         logger.info(f"CarriageController initialized - X range: [{self.min_x_steps}, {self.max_x_steps}], "
                    f"Y range: [{self.min_y_angle}, {self.max_y_angle}]")
@@ -153,16 +153,12 @@ class CarriageController:
         self.move_to_absolute(self.start_x_pos, self.start_y_pos)
         logger.info("Position reset to start")
     
-    def save_position(self, config: CarriageConfig = conf):
+    def save_position(self):
         """Write the current values of position in config file.:"""
         
-        if isinstance(config, CarriageConfig):
-            config.LAST_X_POSITION = self.current_x_steps
-            config.LAST_Y_POSITION = self.current_y_angle
-            config.write()
-        else:
-            logger.error(ValueError, "Config object must be the CarriageConfig class")
-
+        self.config.LAST_X_POSITION = self.current_x_steps
+        self.config.LAST_Y_POSITION = self.current_y_angle
+        self.config.write()
 
 def main(x_steps:int=0, y_degrees:int=0):
     """Main function for hand testing

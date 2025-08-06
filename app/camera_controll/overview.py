@@ -12,7 +12,7 @@ import configs.connactions as config
 
 # TODO move to config file
 DRONE_CLASS_ID = 1
-BUFF_SIZE = 10_000
+BUFF_SIZE = 15_000
 
 WIDTH_FRAME = 1920
 HEIGHT_FRAME = 1080
@@ -30,14 +30,17 @@ class Overview(Process):
     and identifies the nearest drone object across all camera feeds. Calculates
     positional information and generates feature descriptors for tracking.
     """
-    def __init__(self, login, password, cameras_ips, cameras_ports, model_path):
+    def __init__(self, logins, passwords, cameras_ips, cameras_ports, model_path):
         super().__init__()
-        self.cameras_ips = cameras_ips
-        self.cameras_ports = cameras_ports
+
         self.num_cameras = len(cameras_ips)
 
         template = "rtsp://{}:{}@{}:{}/Streaming/channels/101"
-        self.streams_path = [template.format(login, password, ip, port) for ip, port in zip(self.cameras_ips, self.cameras_ports)]
+        self.streams_path = []
+        self.connactions_info = zip(logins, passwords, cameras_ips, cameras_ports)
+
+        for login, password, ip, port in self.connactions_info:
+            self.streams_path.append(template.format(login, password, ip, port))
 
         self.model = YOLO(model_path, task="detect")
 
@@ -144,7 +147,6 @@ class Overview(Process):
 
             # Create shared memory block
             if self.shared_memory is None:
-                json_bytes = json_message.encode('utf-8')
                 self.shared_memory = shared_memory.SharedMemory(
                     name="object_data",
                     create=True, 

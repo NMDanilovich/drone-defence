@@ -26,7 +26,7 @@ def read_config(path:str) -> dict:
                 config_dict[section][key] = int(value)
             except ValueError:
                 config_dict[section][key] = value
-                logging.warning(f"{key} is {type(value)}. Save like string.")   
+                logging.warning(f"{key} is {type(value)}. Save like {type(value)}.")   
     
     
     return config_dict
@@ -53,7 +53,7 @@ def write_config(path: str, config_data: dict):
         config.write(configfile)
 
 class BaseConfig:
-    def __init__(self, section_name, path: str | Path = None, data=None):
+    def __init__(self,  path: str | Path = None, section_name: str = None):
         self.path = path
         self.data = read_config(path)
         
@@ -62,9 +62,11 @@ class BaseConfig:
         elif len(self.data.items()) == 0:
             logging.warning("Lenght config data is 0!")
 
-        self.section_name = section_name.upper()
-
-        self.section = self.data[self.section_name]
+        if section_name is None:
+            self.section = self.data
+        else:
+            self.section_name = section_name.upper()
+            self.section = self.data[self.section_name]
 
         for key, value in self.section.items():
             setattr(self, key.upper(), value)
@@ -106,12 +108,8 @@ class ConnactionsConfig(BaseConfig):
     def __init__(self, path:str=None):
         super().__init__(
             path=Path(__file__).parent.joinpath("connactions.conf") if path is None else path, 
-            section_name="connactions"
         )
 
+        self.NAMES = list(self.data.keys())
 
-if __name__ == "__main__":
-    # examples
-    conf = CarriageConfig()
-    conf.START_X_POSITION = 4500
-    conf.write()
+__all__ = (CarriageConfig, OverviewConfig, TrackerConfig, ConnactionsConfig)

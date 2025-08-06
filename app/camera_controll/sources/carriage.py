@@ -2,9 +2,8 @@ import argparse
 import time
 import logging
 
-
 from config_utils import CarriageConfig
-from uartapi import Uart, JETSON_SERIAL
+from .uartapi import Uart, JETSON_SERIAL
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -138,7 +137,7 @@ class CarriageController:
             tuple: (x_steps, y_angle)
         """
         return (self.current_x_steps, self.current_y_angle)
-           
+              
     def _send_absolute_position(self):
         """Send current absolute position via UART."""
         try:
@@ -154,24 +153,6 @@ class CarriageController:
         self.move_to_absolute(self.start_x_pos, self.start_y_pos)
         logger.info("Position reset to start")
     
-    def get_status(self):
-        """
-        Get current status information.
-        
-        Returns:
-            dict: Status information including position, limits, and parameters
-        """
-        return {
-            'position': {
-                'x_steps': self.current_x_steps,
-                'y_angle': self.current_y_angle
-            },
-            'limits': {
-                'x_range': [self.min_x_steps, self.max_x_steps],
-                'y_range': [self.min_y_angle, self.max_y_angle]
-            }
-            }
-
     def save_position(self, config: CarriageConfig = conf):
         """Write the current values of position in config file.:"""
         
@@ -193,10 +174,7 @@ def main(x_steps:int=0, y_degrees:int=0):
     )
 
     # Show initial status
-    print("Initial status:")
-    status = controller.get_status()
-    print(f"Position: {status['position']}")
-    print(f"Limits: {status['limits']}")
+    print(f"Position: {controller.get_position()}")
     print()
 
     # Uncomment for moving to start position
@@ -212,6 +190,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--x", type=int, default=0)
     parser.add_argument("--y", type=int, default=0)
+    parser.add_argument("--abs", action="store_true")
 
     args = parser.parse_args()
     

@@ -3,10 +3,10 @@ import time
 import logging
 
 # -----------------DEBUG---------
-import pathlib
+import os
 import sys
 
-CONFIGS = pathlib.Path(__file__).parent.parent.joinpath("configs")
+CONFIGS = os.path.abspath(os.path.dirname(os.path.dirname(__file__)))
 sys.path.append(str(CONFIGS))
 # ---------------------------------
 

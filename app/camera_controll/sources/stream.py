@@ -1,7 +1,9 @@
 from threading import Thread
+import logging
 import time
 
 import cv2
+import numpy as np
 
 class VideoStream:
     """VideoStream class. Run thread for RTSP Stream. 
@@ -24,10 +26,15 @@ class VideoStream:
         self.stream_path = stream_path
         self.cap = cv2.VideoCapture(stream_path)
         if not self.cap.isOpened():
-            self.stopped = True
-            raise cv2.error(f"Error: Could not open camera {stream_path}")
-            
-        self.stopped = False
+            self.is_running = False
+            logging.error(cv2.error, f"Error: Could not open camera {stream_path}")
+            raise cv2.error()
+        else:
+            self.is_running = True
+            width = self.cap.get(cv2.CAP_PROP_FRAME_WIDTH)
+            height = self.cap.get(cv2.get(cv2.CAP_PROP_FRAME_HEIGHT))
+            logging.info(f"Initializate of stream: w={width} h={height}")
+
         self.frame = None
         self.thread = Thread(target=self.update, args=())
         self.thread.daemon = True
@@ -35,28 +42,28 @@ class VideoStream:
 
     def update(self):
         """Update frame loop in videostream"""
-        while True:
-            if self.stopped:
-                break
+        while self.is_running:
+
             ret, frame = self.cap.read()
             if not ret:
                 print(f"Error: Failed to read frame from camera {self.stream_path}")
                 self.stopped = True
                 break
+            
             self.frame = frame
             time.sleep(0.01) # Small delay to prevent excessive CPU usage
 
-    def read(self) -> cv2.Mat:
+    def read(self) -> np.ndarray:
         """Read actual frame
         Returns:
-            cv2.Mat
+            np.ndarray
         """  
         return self.frame
 
     def stop(self):
         """Release the videostream.
         """
-        self.stopped = True
+        self.is_running = True
         self.thread.join()
         self.cap.release()
 

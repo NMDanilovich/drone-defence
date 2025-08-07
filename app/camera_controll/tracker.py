@@ -1,14 +1,17 @@
-from multiprocessing import Process
+from multiprocessing import Process, shared_memory
+import json
 import logging
 
 import cv2
 from ultralytics import YOLO
 import torch.nn.functional as F
 
-from utils import BBox, descriptor
-import config
-from stream import VideoStream
-from uartapi import Uart, JETSON_SERIAL
+from sources import BBox, descriptor
+from sources import VideoStream
+from sources import CarriageController
+from sources import coord_to_steps, coord_to_angle
+import configs.connactions as conn
+
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -18,6 +21,7 @@ logger = logging.getLogger(__name__)
 DEBUG_DESCRIPTOR = descriptor(cv2.imread("./test_drone.png"))
 
 # Constants
+# TODO move to config file
 DRONE_CLASS_ID = 1
 DEFAULT_IMAGE_SIZE = 512
 STOP_AREA_SCALE = 0.2
@@ -25,44 +29,53 @@ SIMILARITY_THRESHOLD = 0.7
 MOVEMENT_MULTIPLIER = 2
 COORDINATE_SCALE = 100
 
+WIDTH_FRAME = 1920
+HEIGHT_FRAME = 1080
+HORIZONT_ANGLE = 110
+VERTICAL_ANGLE = 60
+
 DETECTOR_CONF = 0.4
 DETECTOR_IOU = 0.7
 
-class CarriageTracker(Process):
+class Tracker(Process):
     """
     A process-based drone tracker that controls camera carriage movement.
     
     This class tracks drones in video stream and sends movement commands
     to control the camera carriage via UART communication.
     """
-    def __init__(self, stream_path, model_path, controller_path=JETSON_SERIAL):
+    def __init__(self, stream_path, model_path):
         super().__init__()
 
-        # --- stream configuration ---
+        # stream configuration
         self.stream_path = stream_path
 
-        # --- get camera settings ---
+        # get camera settings
         self.frame_width = None
         self.frame_height = None
         self._init_camera()
         
-        # --- initialize AI model and UART controller ---
+        # initialize AI model and UART controller
         self.model = YOLO(model_path, task="detect")
-        self.uart = Uart(controller_path)
+        self.controller = CarriageController()
 
-        # --- set image areas ---
+        # set image areas
         self._setup_tracking_areas()
 
-        # --- Carriage moves ---
+        # Carriage moves
         self.movement_x = 0
         self.movement_y = 0
-        self.zoom_level = 0
 
-        # --- drone information ---
+        # drone information
         self.is_tracking = False
         self.target_descriptor = None
         self.current_target_id = None
         self.similarity_threshold = SIMILARITY_THRESHOLD
+
+        self.memory_name: str = "object_data" 
+
+        self.shared_memory = None
+        self._last_data_hash = None
 
     def _init_camera(self):
         cap = cv2.VideoCapture(self.stream_path)
@@ -117,9 +130,50 @@ class CarriageTracker(Process):
         Returns:
             tuple: (should_track, target_descriptor, target_position)
         """
-        # TODO: Implement actual communication with overview module
-        return True, DEBUG_DESCRIPTOR, 1
 
+        # Create shared memory
+        if self.shared_memory is None:
+            self.shared_memory = shared_memory.SharedMemory(name=self.memory_name)
+
+        try:
+            # read the bytes from shared memory
+            raw_bytes = self.shared_memory.buf[:]
+
+            received_json = bytes(raw_bytes).decode('utf-8').strip('\x00')  # Remove padding
+            
+            current_hash = hash(received_json)
+            if current_hash == self._last_data_hash:
+                return False, None, None
+            else:
+                self._last_data_hash = current_hash       
+            
+            if received_json == "":
+                return False, None, None
+
+            # get object information
+            data = json.loads(received_json)
+
+            return True, data["object_descriptor"], (data["x_position"], data["y_position"])
+
+        except Exception as error:
+            print("\rError getting object information:", error, end="")
+            return False, None, None
+        
+    def cleanup(self):
+        """
+        Cleans up resources by closing the shared memory connection.
+        It does NOT unlink the memory, as the sender is responsible for that.
+        """
+        if self.shared_memory is not None:
+            try:
+                self.shared_memory.close()
+                logging.info(f"Disconnected from shared memory '{self.memory_name}'.")
+            except Exception as e:
+                print(f"Error during receiver cleanup: {e}")
+
+            finally:
+                self.shared_memory = None
+                
     def update_target_id(self, frame, detection_result):
         """
         Update the current target ID based on descriptor similarity.
@@ -165,17 +219,9 @@ class CarriageTracker(Process):
         target_bbox = BBox(*detection_result.boxes.xywh[0])
         
         if self.current_target_id == detection_result.boxes.id:
-            
-            center_offset_x = self.stop_area[0] - target_bbox[0]
-            center_offset_y = self.stop_area[1] - target_bbox[1]
-            
-            self.movement_x = int(
-                    center_offset_x * -MOVEMENT_MULTIPLIER * COORDINATE_SCALE // self.frame_width
-                )
-            
-            self.movement_y = int(
-                    center_offset_y * -MOVEMENT_MULTIPLIER * COORDINATE_SCALE // self.frame_height
-                )
+            x, y = target_bbox[:2]
+            self.movement_x = coord_to_steps(x, WIDTH_FRAME, HORIZONT_ANGLE)
+            self.movement_y = coord_to_angle(y, HEIGHT_FRAME, VERTICAL_ANGLE)
 
         if target_bbox in self.stop_box:
             speed = 0.1
@@ -188,7 +234,6 @@ class CarriageTracker(Process):
         """Reset all movement commands to zero."""
         self.movement_x = 0
         self.movement_y = 0
-        self.zoom_level = 0
 
     def _draw_debug_info(self, frame):
         """Draw debug information on frame."""
@@ -207,6 +252,10 @@ class CarriageTracker(Process):
         
         return frame
 
+    def __del__(self):
+        self.shared_memory.close()
+        self.shared_memory.unlink()
+
     def run(self):
         """Main tracking loop."""
         stream = VideoStream(self.stream_path)
@@ -216,11 +265,12 @@ class CarriageTracker(Process):
             while True:
                 
                 # wait message
-                if not self.tracked:
-                    self.tracked, self.descriptor, position = self.get_info()
-                    self.uart.send_coordinates(*position)
+                if self.tracked is False:
+                    self.tracked, self.descriptor, position = self.get_tracking_info()
+                    if position is not None:
+                        self.controller.move_to_absolute(position)
                     continue
-                
+
                 # get video frame
                 frame = stream.read()
 
@@ -256,7 +306,7 @@ class CarriageTracker(Process):
                         logger.debug("No target found, resetting movement")
                     
                     if self.movement_x != 0 or self.movement_y != 0:
-                        self.uart.send_coordinates(self.movement_x, self.movement_y)
+                        self.controller.move_relative(self.movement_x, self.movement_y)
                     
                 except Exception as e:
                     logger.error(f"Error in detection: {e}")
@@ -278,17 +328,18 @@ class CarriageTracker(Process):
             logger.error(f"Unexpected error in tracking loop: {e}")
         finally:
             logger.info("Cleaning up...")
+            self.cleanup()
             stream.stop()
             cv2.destroyAllWindows()
 
 def main():
     """Main function for standalone execution."""
 
-    tracker = CarriageTracker(
-        stream_path=config.AIMING,
-        model_path=config.MODEL_PATH
+    tracker = Tracker(
+        stream_path=conn.AIMING,
+        model_path=conn.MODEL_PATH
     )
     tracker.start()
 
-if __name__ =="__main__":
+if __name__ == "__main__":
     main()

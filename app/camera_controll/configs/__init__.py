@@ -23,10 +23,10 @@ def read_config(path:str) -> dict:
         for key, value in config.items(section):
             try:
                 # Try converting to integer first
-                config_dict[section][key] = int(value)
+                config_dict[section][key] = float(value) if "." in value else int(value)
             except ValueError:
                 config_dict[section][key] = value
-                logging.warning(f"{key} is {type(value)}. Save like {type(value)}.")   
+                logging.warning(f"{key} is {type(value)}.")   
     
     
     return config_dict

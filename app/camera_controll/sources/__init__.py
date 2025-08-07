@@ -1,8 +1,7 @@
 import os
 import sys
-from pathlib import Path
 
-CONFIGS = Path(__file__).parent.parent.joinpath("configs")
+CONFIGS = os.path.abspath(os.path.dirname(os.path.dirname(__file__)))
 sys.path.append(str(CONFIGS))
 
 from .carriage import CarriageController

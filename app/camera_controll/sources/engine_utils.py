@@ -1,4 +1,4 @@
-STEPS_PER_DEGREE = 10_000 / 90
+STEPS_PER_DEGREE = 2_000 / 90
 
 def coord_to_steps(coord:int, dim:int, angle:float, steps:float=STEPS_PER_DEGREE) -> int:
     """Convertation axis coordinate to steps for carriage engine.

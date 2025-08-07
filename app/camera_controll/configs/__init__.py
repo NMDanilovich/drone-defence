@@ -53,7 +53,7 @@ def write_config(path: str, config_data: dict):
         config.write(configfile)
 
 class BaseConfig:
-    def __init__(self,  path: str | Path = None, section_name: str = None):
+    def __init__(self,  path: str = None, section_name: str = None):
         self.path = path
         self.data = read_config(path)
         

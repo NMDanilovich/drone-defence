@@ -6,7 +6,7 @@ import logging
 import os
 import sys
 
-CONFIGS = os.path.abspath(os.path.dirname(os.path.dirname(__file__)))
+CONFIGS = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.append(str(CONFIGS))
 # ---------------------------------
 
@@ -160,23 +160,22 @@ class CarriageController:
         self.config.LAST_Y_POSITION = self.current_y_angle
         self.config.write()
 
-def main(x_steps:int=0, y_degrees:int=0):
+def main(x_steps:int=0, y_degrees:int=0, start:bool=False):
     """Main function for hand testing
     """
     
     # Initialize controller
-    controller = CarriageController(
-        uart_path=JETSON_SERIAL,
-    )
+    controller = CarriageController()
 
     # Show initial status
     print(f"Position: {controller.get_position()}")
     print()
 
-    # Uncomment for moving to start position
-    # controller.move_to_start()
-
-    controller.move_relative(x_steps, y_degrees)
+    if start:
+        controller.move_to_start()
+    else:
+        controller.move_relative(x_steps, y_degrees)
+    
     controller.save_position()
 
     print(f"New position: {controller.get_position()}")
@@ -187,7 +186,8 @@ if __name__ == "__main__":
     parser.add_argument("--x", type=int, default=0)
     parser.add_argument("--y", type=int, default=0)
     parser.add_argument("--abs", action="store_true")
+    parser.add_argument("--start", action="store_true")
 
     args = parser.parse_args()
     
-    main(args.x, args.y)
+    main(args.x, args.y, args.start)

@@ -1,14 +1,15 @@
 import logging
 import time
+import argparse
 
 import serial
 
-from utils import threaded
+from .threads_utils import threaded
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-JETSON_SERIAL = '/dev/ttyTHS1' # for Jetson UART
+JETSON_SERIAL = '/dev/ttyTHS0' # for Jetson UART
 DEFAULT_BAUDRATE = 115200
 
 class Uart:
@@ -27,7 +28,6 @@ class Uart:
             baudrate=baudrate,
             parity=serial.PARITY_NONE,
             stopbits=serial.STOPBITS_ONE,
-            bytesize=serial.EIGHTBITS,
             timeout=1
         )
 
@@ -47,7 +47,7 @@ class Uart:
         >>> uart.send_coordinates(x_step, y_degrees)
         """
 
-        @threaded(daemon=(not self.is_blocking))
+        @threaded(is_blocking=self.is_blocking)
         def sender():
             try:
                 command = f"X{x_steps} Y{y_angle}\n"
@@ -62,9 +62,21 @@ class Uart:
 
         return sender()
 
+def main(x_steps:int=0, y_degrees:int=0):
+    """Main function for hand testing
+    """
+    
+    uart = Uart()
+
+    uart.send_coordinates(x_steps, y_degrees)
+    time.sleep(0.1)
 
 if __name__ == "__main__":
-    uart = Uart()
-    x_step = 1000
-    y_degrees = 45
-    uart.send_coordinates(x_step, y_degrees)
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--x", type=int)
+    parser.add_argument("--y", type=int)
+
+    args = parser.parse_args()
+    
+    main(args.x, args.y)
+

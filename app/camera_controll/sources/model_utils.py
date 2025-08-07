@@ -1,10 +1,10 @@
 from typing import Iterable
-import threading
-import functools
 
 import cv2
+import numpy as np
 import torch
 import torch.nn.functional as F
+
 
 class BBox(object):
     def __init__(self, x:int, y:int, w:int, h:int):
@@ -36,7 +36,7 @@ class BBox(object):
             raise ValueError("Point should by the two coordinates (X and Y).")
         
     def __repr__(self):
-        return f"ROI(x={self._xywh[0]} y={self._xywh[1]} w={self._xywh[2]} h={self._xywh[3]})"
+        return f"BBox(x={self._xywh[0]} y={self._xywh[1]} w={self._xywh[2]} h={self._xywh[3]})"
 
     @property
     def xyxy(self):
@@ -46,7 +46,8 @@ class BBox(object):
     def xywh(self):
         return self._xywh
 
-def descriptor(image: cv2.Mat) -> torch.Tensor:
+
+def descriptor(image: np.ndarray) -> torch.Tensor:
     """
     Extract a feature descriptor from an image for comparison purposes.
     
@@ -55,7 +56,7 @@ def descriptor(image: cv2.Mat) -> torch.Tensor:
     image comparison tasks.
     
     Args:
-        image: Input image as cv2.Mat (BGR format)
+        image: Input image as np.ndarray (BGR format)
         
     Returns:
         torch.Tensor: Normalized feature descriptor vector
@@ -124,23 +125,3 @@ def descriptor(image: cv2.Mat) -> torch.Tensor:
     
     return descriptor_norm
 
-def threaded(*, daemon=True):
-    """
-    Decorator factory for non-blocking thread execution
-    - daemon: Thread exits with main program (default: True)
-    """
-    def decorator(func):
-        @functools.wraps(func)
-        def wrapper(*args, **kwargs):
-            # Create and start thread
-            thread = threading.Thread(
-                target=func,
-                args=args,
-                kwargs=kwargs,
-                daemon=daemon
-            )
-            thread.start()
-            
-            return thread
-        return wrapper
-    return decorator

@@ -3,16 +3,24 @@ import logging
 from multiprocessing import Process, shared_memory
 
 from ultralytics import YOLO
-import torch
 import json
 
-from stream import VideoStream
-from utils import descriptor
-import config
+from sources import VideoStream
+from sources import descriptor
+from sources import coord_to_steps, coord_to_angle
+import configs.connactions as config
 
+# TODO move to config file
 DRONE_CLASS_ID = 1
-ANGLE_OF_VIEW = 360
-CAMERA_ANGLES = 112
+BUFF_SIZE = 15_000
+
+WIDTH_FRAME = 1920
+HEIGHT_FRAME = 1080
+HORIZONT_ANGLE = 110
+VERTICAL_ANGLE = 60
+
+CALIB = [None, None, None, 4500] # 202, 203, 204, 205
+HORIZ = 119
 
 class Overview(Process):
     """
@@ -22,17 +30,23 @@ class Overview(Process):
     and identifies the nearest drone object across all camera feeds. Calculates
     positional information and generates feature descriptors for tracking.
     """
-    def __init__(self, login, password, cameras_ips, cameras_ports, model_path):
+    def __init__(self, logins, passwords, cameras_ips, cameras_ports, model_path):
         super().__init__()
-        self.cameras_ips = cameras_ips
-        self.cameras_ports = cameras_ports
+
         self.num_cameras = len(cameras_ips)
-        self.sector_view = ANGLE_OF_VIEW / self.num_cameras
 
         template = "rtsp://{}:{}@{}:{}/Streaming/channels/101"
-        self.streams_path = [template.format(login, password, ip, port) for ip, port in zip(self.cameras_ips, self.cameras_ports)]
+        self.streams_path = []
+        self.connactions_info = zip(logins, passwords, cameras_ips, cameras_ports)
+
+        for login, password, ip, port in self.connactions_info:
+            self.streams_path.append(template.format(login, password, ip, port))
 
         self.model = YOLO(model_path, task="detect")
+
+        self.shared_memory = None
+
+        self.running = True
 
     def get_nearest_object(self, frames, detection_results, class_id:int=DRONE_CLASS_ID) -> dict:
         """Function getting dict with information about nearest object
@@ -91,17 +105,36 @@ class Overview(Process):
                         nearest_object["descriptor"] = descriptor(object_region)
 
         return nearest_object
+
+    def cleanup(self):
+        """Clean up shared memory resources."""
+        try:
+            self.shared_memory.close()
+            self.shared_memory.unlink()
+        except FileNotFoundError:
+            logging.info(f"Shared memory was already unlinked.")
+        except Exception as e:
+            logging.error(f"Error during sender cleanup: {e}")
+
+        finally:
+            self.shared_memory = None
     
     def send_object_info(self, object_info: dict) -> bool:
+        
         
         if object_info["object"] is None:
             return False
         
         try:
+            
             # formation message
             object_descriptor = object_info["descriptor"].tolist()
-            x_position = object_info["center"][0] + self.sector_view * object_info["camera"]
-            y_position = 0
+            x, y = object_info["center"]
+            x_calib = CALIB[object_info["camera"]]
+            y_calib = HORIZ 
+
+            x_position = int(coord_to_steps(x, WIDTH_FRAME, HORIZONT_ANGLE) + x_calib) # steps
+            y_position = int(coord_to_angle(y, HEIGHT_FRAME, VERTICAL_ANGLE) + y_calib) # angles
 
             message = {
                 "object_descriptor": object_descriptor, 
@@ -110,15 +143,21 @@ class Overview(Process):
             }
 
             json_message = json.dumps(message)
+            json_bytes = json_message.encode('utf-8')
 
             # Create shared memory block
-            shm = shared_memory.SharedMemory(
-                name="json_shm",
-                create=True, 
-                size=len(json_message)
-            )
+            if self.shared_memory is None:
+                self.shared_memory = shared_memory.SharedMemory(
+                    name="object_data",
+                    create=True, 
+                    size=BUFF_SIZE
+                )
+            
+            # clear tail buffer
+            self.shared_memory.buf[:] = b"\x00" * BUFF_SIZE
 
-            shm.buf[:len(json_message)] = json_message.encode('utf-8')
+            # json information to buffer
+            self.shared_memory.buf[:len(json_bytes)] = json_bytes
 
         except Exception as err:
             print("Send object error:", err)
@@ -129,7 +168,7 @@ class Overview(Process):
         streams = [VideoStream(path) for path in self.streams_path]
 
         try:
-            while True:
+            while self.running:
                 start = time.time()
 
                 # get video frames
@@ -158,6 +197,12 @@ class Overview(Process):
             for stream in streams:
                 stream.stop()
 
+            self.cleanup()
+
+    def stop(self):
+        """Stoped process"""
+        self.running = False
+
 def main():
     """Main function for running process
     """
@@ -173,7 +218,13 @@ def main():
         cameras_ips=cameras_ips, 
         cameras_ports=cameras_ports, 
         model_path=config.MODEL_PATH)
-    overview.start()
+    
+    try:
+        overview.start()
+        overview.join()
+    except KeyboardInterrupt:
+        overview.stop()
+        overview.join()
 
 if __name__ == "__main__":
     main()

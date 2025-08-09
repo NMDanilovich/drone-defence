@@ -1,16 +1,18 @@
 from multiprocessing import Process, shared_memory
 import json
+import time
 import logging
 
 import cv2
 from ultralytics import YOLO
+import torch
 import torch.nn.functional as F
 
 from sources import BBox, descriptor
 from sources import VideoStream
-from sources import CarriageController
 from sources import coord_to_steps, coord_to_angle
-import configs.connactions as conn
+from sources import CarriageController
+from configs import ConnactionsConfig, TrackerConfig
 
 
 # Configure logging
@@ -18,24 +20,10 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # Debug descriptor for testing
-DEBUG_DESCRIPTOR = descriptor(cv2.imread("./test_drone.png"))
+DEBUG_DESCRIPTOR = descriptor(cv2.imread("./example.jpg"))
 
 # Constants
-# TODO move to config file
-DRONE_CLASS_ID = 1
 DEFAULT_IMAGE_SIZE = 512
-STOP_AREA_SCALE = 0.2
-SIMILARITY_THRESHOLD = 0.7
-MOVEMENT_MULTIPLIER = 2
-COORDINATE_SCALE = 100
-
-WIDTH_FRAME = 1920
-HEIGHT_FRAME = 1080
-HORIZONT_ANGLE = 110
-VERTICAL_ANGLE = 60
-
-DETECTOR_CONF = 0.4
-DETECTOR_IOU = 0.7
 
 class Tracker(Process):
     """
@@ -44,11 +32,13 @@ class Tracker(Process):
     This class tracks drones in video stream and sends movement commands
     to control the camera carriage via UART communication.
     """
-    def __init__(self, stream_path, model_path):
+    def __init__(self, login, password, camera_ip, camera_port, config_path=None):
         super().__init__()
-
+        self.t_config = TrackerConfig(config_path)
+        
         # stream configuration
-        self.stream_path = stream_path
+        template = "rtsp://{}:{}@{}:{}/Streaming/channels/101"
+        self.stream_path = template.format(login, password, camera_ip, camera_port)
 
         # get camera settings
         self.frame_width = None
@@ -56,8 +46,9 @@ class Tracker(Process):
         self._init_camera()
         
         # initialize AI model and UART controller
-        self.model = YOLO(model_path, task="detect")
+        self.model = YOLO(self.t_config.MODEL_PATH, task="detect")
         self.controller = CarriageController()
+        self.controller.move_to_start()
 
         # set image areas
         self._setup_tracking_areas()
@@ -67,13 +58,14 @@ class Tracker(Process):
         self.movement_y = 0
 
         # drone information
-        self.is_tracking = False
+        self.tracked = False
         self.target_descriptor = None
         self.current_target_id = None
-        self.similarity_threshold = SIMILARITY_THRESHOLD
+        self.last_found_time = None
+        self.similarity_threshold = self.t_config.SIMILARITY_THRESHOLD
 
+        # shared memory informations
         self.memory_name: str = "object_data" 
-
         self.shared_memory = None
         self._last_data_hash = None
 
@@ -95,8 +87,8 @@ class Tracker(Process):
         center_y = self.frame_height // 2
         
         # Stop area - when target is in this area, minimal movement
-        stop_width = int(self.frame_width * STOP_AREA_SCALE)
-        stop_height = int(self.frame_height * STOP_AREA_SCALE)
+        stop_width = int(self.frame_width * self.t_config.STOP_AREA_SCALE)
+        stop_height = int(self.frame_height * self.t_config.STOP_AREA_SCALE)
         
         self.stop_area = BBox(center_x, center_y, stop_width, stop_height)
         
@@ -153,7 +145,7 @@ class Tracker(Process):
             # get object information
             data = json.loads(received_json)
 
-            return True, data["object_descriptor"], (data["x_position"], data["y_position"])
+            return True, torch.Tensor(data["object_descriptor"]), (data["x_position"], data["y_position"])
 
         except Exception as error:
             print("\rError getting object information:", error, end="")
@@ -208,7 +200,7 @@ class Tracker(Process):
             self.current_target_id = None
             return False
 
-    def calculate_movement(self, detection_result):
+    def calculate_movement(self, object_bbox: BBox):
         """
         Calculate movement commands based on target position.
         
@@ -216,24 +208,22 @@ class Tracker(Process):
             detection_result: YOLO detection result
         """
 
-        target_bbox = BBox(*detection_result.boxes.xywh[0])
-        
-        if self.current_target_id == detection_result.boxes.id:
-            x, y = target_bbox[:2]
-            self.movement_x = coord_to_steps(x, WIDTH_FRAME, HORIZONT_ANGLE)
-            self.movement_y = coord_to_angle(y, HEIGHT_FRAME, VERTICAL_ANGLE)
+        x, y = object_bbox[:2]
 
-        if target_bbox in self.stop_box:
-            speed = 0.1
+        width = self.t_config.WIDTH_FRAME
+        hor = self.t_config.HORIZ_ANGLE
+        height = self.t_config.HEIGHT_FRAME
+        vert = self.t_config.VERTIC_ANGLE
+
+        if object_bbox in self.stop_area:
+            speed = 0.0
         else:
             speed = 1
 
-        logger.debug(f"Movement calculated: X={self.movement_x}, Y={self.movement_y}")
+        self.movement_x = int(coord_to_steps(x, width, hor) * speed)
+        self.movement_y = -1 * int(coord_to_angle(y, height, vert) * speed) # -1 
 
-    def _reset_movement(self):
-        """Reset all movement commands to zero."""
-        self.movement_x = 0
-        self.movement_y = 0
+        logger.debug(f"Movement calculated: X={self.movement_x}, Y={self.movement_y}")
 
     def _draw_debug_info(self, frame):
         """Draw debug information on frame."""
@@ -252,62 +242,85 @@ class Tracker(Process):
         
         return frame
 
-    def __del__(self):
-        self.shared_memory.close()
-        self.shared_memory.unlink()
+    def detect_val(self, detection_results, frame) -> BBox:
+        """Validation detection results by drone tracking.
+
+        Args:
+            detection_results: YOLO detection result
+
+        Returns:
+            BBox : bounding box struct for containing object coordinates.
+        """
+        target_found = False
+        target_bbox = None
+
+        for result in detection_results[0]:    
+            if result.boxes.cls != self.t_config.DRONE_CLASS_ID:
+                continue
+
+            if self.current_target_id is None:
+                if self.update_target_id(frame, result):
+                    target_found = True
+            elif self.current_target_id == result.boxes.id[0]:
+                target_found = True
+            else:
+                continue
+        
+            target_bbox = BBox(*result.boxes.xywh[0])
+        
+        return target_found, target_bbox
+
 
     def run(self):
         """Main tracking loop."""
         stream = VideoStream(self.stream_path)
+        self.is_running = True
         
         try:
             logger.info("Starting carriage tracker...")
-            while True:
+            while self.is_running:
                 
                 # wait message
                 if self.tracked is False:
-                    self.tracked, self.descriptor, position = self.get_tracking_info()
+                    self.tracked, self.target_descriptor, position = self.get_tracking_info()
                     if position is not None:
-                        self.controller.move_to_absolute(position)
+                        self.controller.move_to_absolute(*position)
                     continue
 
                 # get video frame
                 frame = stream.read()
 
-                if frame is not None:
+                if frame is None:
                     logger.warning("No frame received")
                     continue
                     
-                processed_frame = self.preprocess_frame(frame)
-
                 try:
-                    detections_results = self.model.track(
-                        processed_frame,
-                        conf=DETECTOR_CONF,
-                        iou=DETECTOR_IOU,
+                    detection_results = self.model.track(
+                        frame,
+                        conf=self.t_config.DETECTOR_CONF,
+                        iou=self.t_config.DETECTOR_IOU,
                         device="cuda:0")
-
-                    target_found = True
-
-                    for result in detections_results[0]:    
-                        if result.boxes.cls != DRONE_CLASS_ID:
-                            continue
-                        
-                        if self.current_target_id is None:
-                            if self.update_target_id(processed_frame, result):
-                                target_found = True
-                        else:
-                            self.calculate_movement(result)
-                            target_found = True
-                            break
-
-                    if not target_found:
-                        self._reset_movement()
-                        logger.debug("No target found, resetting movement")
                     
+                    target_found, obj_bbox = self.detect_val(detection_results, frame)
+
+                    if target_found:
+                        self.last_found_time = time.time()
+                        self.calculate_movement(obj_bbox)
+                    else:
+                        self.movement_x = 0
+                        self.movement_y = 0
+                        
+                        is_found = self.last_found_time is not None
+                        time_cond = time.time() - self.last_found_time > 5
+                        
+                        if is_found and time_cond:
+                            self.tracked = False
+                            self.last_found_time = None
+
+
                     if self.movement_x != 0 or self.movement_y != 0:
                         self.controller.move_relative(self.movement_x, self.movement_y)
-                    
+
                 except Exception as e:
                     logger.error(f"Error in detection: {e}")
                     continue
@@ -324,6 +337,7 @@ class Tracker(Process):
 
         except KeyboardInterrupt:
             logger.info("Tracking interrupted by user")
+            self.is_running = False
         except Exception as e:
             logger.error(f"Unexpected error in tracking loop: {e}")
         finally:
@@ -335,11 +349,21 @@ class Tracker(Process):
 def main():
     """Main function for standalone execution."""
 
+    connactions = ConnactionsConfig()
+    login = connactions.T_CAMERA_1["login"]
+    password = connactions.T_CAMERA_1["password"]
+    ip = connactions.T_CAMERA_1["ip"]
+    port = connactions.T_CAMERA_1["port"]
+
     tracker = Tracker(
-        stream_path=conn.AIMING,
-        model_path=conn.MODEL_PATH
+        login=login,
+        password=password,
+        camera_ip=ip,
+        camera_port=port,
     )
+
     tracker.start()
+    tracker.join()
 
 if __name__ == "__main__":
     main()

@@ -57,6 +57,7 @@ class Uart:
                 # Ждем подтверждения
                 response = self.port.readline().decode().strip()
                 logger.info("Arduino answer: %s", response)
+                # time.sleep(0.1)
             except Exception as error:
                 logger.error("SenderError: %s", error)
 

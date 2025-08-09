@@ -32,12 +32,12 @@ class VideoStream:
         else:
             self.is_running = True
             width = self.cap.get(cv2.CAP_PROP_FRAME_WIDTH)
-            height = self.cap.get(cv2.get(cv2.CAP_PROP_FRAME_HEIGHT))
+            height = self.cap.get(cv2.CAP_PROP_FRAME_HEIGHT)
             logging.info(f"Initializate of stream: w={width} h={height}")
 
         self.frame = None
-        self.thread = Thread(target=self.update, args=())
-        self.thread.daemon = True
+        self.thread = Thread(target=self.update, daemon=True)
+
         self.thread.start()
 
     def update(self):
@@ -63,7 +63,7 @@ class VideoStream:
     def stop(self):
         """Release the videostream.
         """
-        self.is_running = True
+        self.is_running = False
         self.thread.join()
         self.cap.release()
 

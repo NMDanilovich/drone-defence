@@ -1,4 +1,3 @@
-from dataclasses import dataclass
 import logging
 import configparser
 from pathlib import Path
@@ -63,22 +62,21 @@ class BaseConfig:
             logging.warning("Lenght config data is 0!")
 
         if section_name is None:
-            self.section = self.data
+            section = self.data
         else:
             self.section_name = section_name.upper()
-            self.section = self.data[self.section_name]
+            section = self.data[self.section_name]
 
-        for key, value in self.section.items():
+        for key, value in section.items():
             setattr(self, key.upper(), value)
 
     def write(self):
         """Write the last config changes
         """
 
-        for key, value in self.section.items():
-            self.section[key] = self.__getattribute__(key.upper())
+        for key, value in self.data[self.section_name].items():
+            self.data[self.section_name][key] = self.__getattribute__(key.upper())
         
-        self.data[self.section_name] = self.section
         write_config(self.path, self.data)
 
 
@@ -94,7 +92,7 @@ class OverviewConfig(BaseConfig):
     def __init__(self, path:str=None):
         super().__init__(
             path=Path(__file__).parent.joinpath("overview.conf") if path is None else path, 
-            section_name="model"
+            section_name="overview"
         )
 
 class TrackerConfig(BaseConfig):
@@ -111,5 +109,14 @@ class ConnactionsConfig(BaseConfig):
         )
 
         self.NAMES = list(self.data.keys())
+
+class CalibrationConfig(BaseConfig):
+    def __init__(self, path:str=None):
+        super().__init__(
+            path=Path(__file__).parent.joinpath("calibration.conf") if path is None else path,
+            section_name="calibration"
+        )
+
+        self.ALL = list(self.data[self.section_name].values())
 
 __all__ = (CarriageConfig, OverviewConfig, TrackerConfig, ConnactionsConfig)

@@ -120,5 +120,3 @@ class CalibrationConfig(BaseConfig):
         self.ALL = list(self.data[self.section_name].values())
 
 __all__ = (CarriageConfig, OverviewConfig, TrackerConfig, ConnactionsConfig)
-
-print(vars(CalibrationConfig()))

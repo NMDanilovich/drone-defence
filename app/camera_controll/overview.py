@@ -36,7 +36,11 @@ class Overview(Process):
 
         self.model = YOLO(self.ov_config.MODEL_PATH, task="detect")
 
-        self.shared_memory = None
+        self.shared_memory = shared_memory.SharedMemory(
+            name="object_data",
+            create=True, 
+            size=BUFF_SIZE
+        )
 
         self.running = True
 
@@ -158,14 +162,6 @@ class Overview(Process):
             json_message = json.dumps(message)
             json_bytes = json_message.encode('utf-8')
 
-            # Create shared memory block
-            if self.shared_memory is None:
-                self.shared_memory = shared_memory.SharedMemory(
-                    name="object_data",
-                    create=True, 
-                    size=BUFF_SIZE
-                )
-            
             # clear tail buffer
             self.shared_memory.buf[:] = b"\x00" * BUFF_SIZE
 
@@ -253,7 +249,7 @@ def main():
     )
     
     try:
-        overview.start()
+        overview.run()
         overview.join()
     except KeyboardInterrupt:
         overview.stop()

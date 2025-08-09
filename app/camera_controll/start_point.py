@@ -1,32 +1,44 @@
+import time
+
 from overview import Overview
 from tracker import Tracker
-import configs.connactions as config
+from configs import ConnactionsConfig
 
 def main():
-    login = config.OVERVIEW["login"]
-    password = config.OVERVIEW["password"]
-    cameras_ips = [config.OVERVIEW[camera]["ip"] for camera in config.OVERVIEW if camera.startswith("camera")]
-    cameras_ports = [config.OVERVIEW[camera]["port"] for camera in config.OVERVIEW if camera.startswith("camera")]
+    config = ConnactionsConfig()
+
+    logins = [config.data[camera]["login"] for camera in config.data if camera.startswith("ov")]
+    passwords = [config.data[camera]["password"] for camera in config.data if camera.startswith("ov")]
+    cameras_ips = [config.data[camera]["ip"] for camera in config.data if camera.startswith("ov")]
+    cameras_ports = [config.data[camera]["port"] for camera in config.data if camera.startswith("ov")]
     
     overview = Overview(
-        login=login, 
-        password=password, 
+        logins=logins, 
+        passwords=passwords, 
         cameras_ips=cameras_ips, 
         cameras_ports=cameras_ports, 
-        model_path=config.MODEL_PATH)
-    overview.start()
-
-    carriage_camera = f"rtsp://{login}:{password}@192.168.85.201:554/Streaming/channels/101"
-    tracker = Tracker(
-        #stream_path=config.AIMING,
-        stream_path=carriage_camera,
-        model_path=config.MODEL_PATH,
-        controller_path="/dev/THS0"
     )
-    tracker.start()
+    overview.start()
+    
+    time.sleep(3)
+    connactions = ConnactionsConfig()
+    login = connactions.T_CAMERA_1["login"]
+    password = connactions.T_CAMERA_1["password"]
+    ip = connactions.T_CAMERA_1["ip"]
+    port = connactions.T_CAMERA_1["port"]
 
-    overview.join()
+    tracker = Tracker(
+        login=login,
+        password=password,
+        camera_ip=ip,
+        camera_port=port,
+    )
+
+    tracker.start()
+    
     tracker.join()
+    overview.join()
+    
 
 if __name__ == "__main__":
     main()

@@ -193,11 +193,20 @@ class Overview(Process):
                 
                 # get bboxes
                 if len(frames) == self.num_cameras:
-                    detection_results = self.model.predict(
-                        frames, 
-                        conf=self.ov_config.DETECTOR_CONF,
-                        iou=self.ov_config.DETECTOR_IOU,
-                        stream=True)
+                    
+                    # detection_results = self.model.predict(
+                    #     frames, 
+                    #     conf=self.ov_config.DETECTOR_CONF,
+                    #     iou=self.ov_config.DETECTOR_IOU,
+                    #     )                    
+                    detection_results = []
+                    for frame in frames:
+                        result = self.model.predict(
+                            frame, 
+                            conf=self.ov_config.DETECTOR_CONF,
+                            iou=self.ov_config.DETECTOR_IOU,
+                            )
+                        detection_results.append(result[0])
                 else:
                     continue
 
@@ -212,6 +221,7 @@ class Overview(Process):
                 if nearest_object["object"] is not None:
                     self.send_object_info(nearest_object)
 
+                time.sleep(2)
                 print("Total time:", time.time() - start)
 
         finally:

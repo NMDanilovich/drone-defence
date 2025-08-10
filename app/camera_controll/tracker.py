@@ -27,10 +27,34 @@ DEFAULT_IMAGE_SIZE = 512
 
 class Tracker(Process):
     """
-    A process-based drone tracker that controls camera carriage movement.
-    
-    This class tracks drones in video stream and sends movement commands
-    to control the camera carriage via UART communication.
+    A process-based drone tracker that controls the movement of a camera carriage.
+
+    This class is designed to run as a separate process for tracking drones in a video stream.
+    It receives tracking information from an overview module via shared memory, identifies the target
+    drone using a YOLO model, and sends movement commands to a carriage controller to keep the
+    drone centered in the frame.
+
+    Args:
+        login (str): The login username for the RTSP camera stream.
+        password (str): The password for the RTSP camera stream.
+        camera_ip (str): The IP address of the camera.
+        camera_port (int): The port for the camera stream.
+        config_path (str, optional): Path to the tracker configuration file. Defaults to None.
+
+    Attributes:
+        t_config (TrackerConfig): Configuration settings for the tracker.
+        stream_path (str): The URL for the RTSP camera stream.
+        frame_width (int): The width of the video frames.
+        frame_height (int): The height of the video frames.
+        model (YOLO): The YOLO object detection model.
+        controller (CarriageController): The controller for the camera carriage.
+        stop_area (BBox): A bounding box defining the central "stop" area where no movement is needed.
+        tracked (bool): A flag indicating if a drone is currently being tracked.
+        target_descriptor (torch.Tensor): The feature descriptor of the target drone.
+        current_target_id (int): The ID of the currently tracked drone.
+        last_found_time (float): The timestamp when the drone was last detected.
+        similarity_threshold (float): The threshold for cosine similarity to match descriptors.
+        shared_memory (shared_memory.SharedMemory): The shared memory object for communication.
     """
     def __init__(self, login, password, camera_ip, camera_port, config_path=None):
         super().__init__()
@@ -82,7 +106,7 @@ class Tracker(Process):
         logger.info(f"Camera initialized: {self.frame_width}x{self.frame_height}")
     
     def _setup_tracking_areas(self):
-        """Setup tracking areas for movement control."""
+        """Sets up the tracking areas for movement control based on the frame dimensions."""
         center_x = self.frame_width // 2
         center_y = self.frame_height // 2
         
@@ -98,15 +122,18 @@ class Tracker(Process):
     @staticmethod
     def preprocess_frame(frame, flip_code=0, target_size=DEFAULT_IMAGE_SIZE):
         """
-        Preprocess frame for model inference.
-        
+        Preprocesses a video frame for model inference.
+
+        This static method flips and resizes the frame to the target dimensions required by the model.
+
         Args:
-            frame: Input frame
-            flip_code: Flip code for cv2.flip (0=vertical, 1=horizontal, -1=both)
-            target_size: Target size for resizing
-            
+            frame (numpy.ndarray): The input video frame.
+            flip_code (int, optional): The flip code for `cv2.flip`. 
+                                       0 for vertical, 1 for horizontal, -1 for both. Defaults to 0.
+            target_size (int, optional): The target size for resizing. Defaults to DEFAULT_IMAGE_SIZE.
+
         Returns:
-            Preprocessed frame
+            numpy.ndarray: The preprocessed frame.
         """
         if frame is None:
             return None
@@ -117,10 +144,16 @@ class Tracker(Process):
 
     def get_tracking_info(self):
         """
-        Get tracking information from overview module.
-        
+        Retrieves tracking information from the overview module via shared memory.
+
+        This method reads data from the shared memory, deserializes it, and checks if it's new data
+        by comparing hashes.
+
         Returns:
-            tuple: (should_track, target_descriptor, target_position)
+            tuple: A tuple containing:
+                   - bool: True if tracking information is available and new, False otherwise.
+                   - torch.Tensor or None: The feature descriptor of the target.
+                   - tuple or None: The (x, y) position of the target.
         """
 
         # Create shared memory
@@ -168,14 +201,18 @@ class Tracker(Process):
                 
     def update_target_id(self, frame, detection_result):
         """
-        Update the current target ID based on descriptor similarity.
-        
+        Updates the current target ID by comparing descriptor similarity.
+
+        This method computes the cosine similarity between the target descriptor and the
+        descriptor of the detected object. If the similarity is above the threshold,
+        the target ID is updated.
+
         Args:
-            frame: Current frame
-            detection_result: YOLO detection result
-            
+            frame (numpy.ndarray): The current video frame.
+            detection_result: The YOLO detection result for a potential target.
+
         Returns:
-            bool: True if target ID was successfully updated
+            bool: True if the target ID was successfully updated, False otherwise.
         """
         x1, y1, x2, y2 = map(int, detection_result.boxes.xyxy[0])
         object_region = frame[y1:y2, x1:x2]
@@ -202,10 +239,13 @@ class Tracker(Process):
 
     def calculate_movement(self, object_bbox: BBox):
         """
-        Calculate movement commands based on target position.
-        
+        Calculates the required movement commands based on the target's position.
+
+        If the target is within the central "stop area," no movement is generated.
+        Otherwise, it calculates the necessary steps and angles to move the carriage.
+
         Args:
-            detection_result: YOLO detection result
+            object_bbox (BBox): The bounding box of the target object.
         """
 
         x, y = object_bbox[:2]
@@ -226,7 +266,7 @@ class Tracker(Process):
         logger.debug(f"Movement calculated: X={self.movement_x}, Y={self.movement_y}")
 
     def _draw_debug_info(self, frame):
-        """Draw debug information on frame."""
+        """Draws debugging information on the frame."""
         # Draw stop area
         cv2.rectangle(
             frame, 
@@ -243,13 +283,20 @@ class Tracker(Process):
         return frame
 
     def detect_val(self, detection_results, frame) -> BBox:
-        """Validation detection results by drone tracking.
+        """
+        Validates detection results to identify the tracked drone.
+
+        This method iterates through detection results, filters for the correct class ID,
+        and updates the target ID if a match is found based on descriptor similarity.
 
         Args:
-            detection_results: YOLO detection result
+            detection_results: The YOLO detection results.
+            frame (numpy.ndarray): The current video frame.
 
         Returns:
-            BBox : bounding box struct for containing object coordinates.
+            tuple: A tuple containing:
+                   - bool: True if the target was found, False otherwise.
+                   - BBox or None: The bounding box of the target if found.
         """
         target_found = False
         target_bbox = None
@@ -272,7 +319,7 @@ class Tracker(Process):
 
 
     def run(self):
-        """Main tracking loop."""
+        """The main tracking loop of the process."""
         stream = VideoStream(self.stream_path)
         self.is_running = True
         
@@ -347,7 +394,7 @@ class Tracker(Process):
             cv2.destroyAllWindows()
 
 def main():
-    """Main function for standalone execution."""
+    """Initializes and runs the Tracker process for standalone execution."""
 
     connactions = ConnactionsConfig()
     login = connactions.T_CAMERA_1["login"]

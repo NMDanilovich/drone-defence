@@ -1,3 +1,7 @@
+"""This script provides a command-line interface for calibrating and controlling a camera carriage.
+
+It allows for interactive control, moving to a predefined start position, and making absolute or relative movements.
+"""
 import argparse
 
 import cv2
@@ -5,6 +9,11 @@ import cv2
 from sources import CarriageController
 
 def interactive_mode():
+    """Starts interactive mode for manual camera carriage calibration.
+
+    Allows the user to move the carriage up, down, left, or right using keyboard inputs (W, S, A, D).
+    The position is saved when the user quits (Q).
+    """
     # Initialize controller
     controller = CarriageController()
 
@@ -33,6 +42,10 @@ def interactive_mode():
     controller.save_position()
 
 def start_mode():
+    """Moves the camera carriage to the predefined start position.
+
+    The final position is saved.
+    """
     controller = CarriageController()
 
     print(f"Position: {controller.get_position()}")
@@ -43,7 +56,15 @@ def start_mode():
     print(f"New position: {controller.get_position()}")
 
 def move_mode(x_steps:int=0, y_degrees:int=0, absolute:bool=False):
-    """Main function for hand testing
+    """Moves the camera carriage by a specified amount.
+
+    Can perform either absolute or relative movements based on the provided arguments.
+
+    Args:
+        x_steps (int, optional): The number of steps to move on the x-axis. Defaults to 0.
+        y_degrees (int, optional): The number of degrees to move on the y-axis. Defaults to 0.
+        absolute (bool, optional): If True, moves to the absolute position (x_steps, y_degrees).
+                                   If False, performs a relative move. Defaults to False.
     """
     
     # Initialize controller

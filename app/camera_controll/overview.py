@@ -14,13 +14,42 @@ BUFF_SIZE = 15_000
 
 class Overview(Process):
     """
-    Multi-camera overview system for drone detection and tracking.
+    Manages a multi-camera overview system for detecting and tracking drones.
 
-    Manages multiple RTSP camera streams, performs YOLO-based object detection,
-    and identifies the nearest drone object across all camera feeds. Calculates
-    positional information and generates feature descriptors for tracking.
+    This class operates as a separate process to handle multiple RTSP camera streams concurrently.
+    It uses a YOLO model for object detection on each stream, identifies the nearest drone based on object area,
+    and calculates its position. Feature descriptors are generated for tracking purposes.
+    The information about the nearest detected object is then shared with other processes
+    via shared memory.
+
+    Args:
+        logins (list[str]): A list of login usernames for the RTSP cameras.
+        passwords (list[str]): A list of passwords for the RTSP cameras.
+        cameras_ips (list[str]): A list of IP addresses for the RTSP cameras.
+        cameras_ports (list[int]): A list of ports for the RTSP cameras.
+        config_path (str, optional): Path to the overview configuration file. Defaults to None.
+        calibr_path (str, optional): Path to the calibration configuration file. Defaults to None.
+
+    Attributes:
+        ov_config (OverviewConfig): Configuration for the overview system.
+        calibr_config (CalibrationConfig): Configuration for camera calibration.
+        num_cameras (int): The number of cameras being managed.
+        streams_path (list[str]): A list of RTSP stream URLs.
+        model (YOLO): The YOLO object detection model.
+        shared_memory (shared_memory.SharedMemory): The shared memory block for inter-process communication.
+        running (bool): A flag to control the main loop of the process.
     """
     def __init__(self, logins, passwords, cameras_ips, cameras_ports, config_path=None, calibr_path=None):
+        """Manages a multi-camera overview system for detecting and tracking drones.
+
+        Args:
+            logins (list[str]): A list of login usernames for the RTSP cameras.
+            passwords (list[str]): A list of passwords for the RTSP cameras.
+            cameras_ips (list[str]): A list of IP addresses for the RTSP cameras.
+            cameras_ports (list[int]): A list of ports for the RTSP cameras.
+            config_path (str, optional): Path to the overview configuration file. Defaults to None.
+            calibr_path (str, optional): Path to the calibration configuration file. Defaults to None.
+        """
         super().__init__()
         self.ov_config = OverviewConfig(config_path)
         self.calibr_config = CalibrationConfig(calibr_path)
@@ -45,24 +74,25 @@ class Overview(Process):
         self.running = True
 
     def get_nearest_object(self, frames, detection_results, class_id:int) -> dict:
-        """Function getting dict with information about nearest object
+        """
+        Identifies the nearest detected object of a specific class across all camera frames.
+
+        The nearest object is determined by the largest bounding box area.
 
         Args:
-            frames (list[cv2.Mat]) : frames from cameras
-            detection_results : detection results like a Yolo results
-            class_id (int, optional): number of class, for find nearest object.
-        
+            frames (list): A list of video frames (e.g., from OpenCV) from all cameras.
+            detection_results (list): A list of YOLO detection results for each frame.
+            class_id (int): The class ID to search for (e.g., the ID for drones).
+
         Returns:
-            information (dict) : information about nearest object. 
-            Has the structure: 
-            ```
-            {
-                "camera": int | None, # number of camera
-                "object": int | None, # number of object from camera results
-                "center": tuple[int, int] | None # object center on frame
-                "decriptor": torch.Tensor() | None # unique embedding for object 
-            }
-            ```
+            dict: A dictionary containing information about the nearest object found.
+                  The dictionary has the following structure:
+                  {
+                      "camera": int or None,      # Index of the camera that saw the nearest object.
+                      "object": int or None,      # Index of the object in the camera's detection results.
+                      "center": tuple or None,    # (x, y) coordinates of the object's center.
+                      "descriptor": tensor or None # Feature descriptor for the object.
+                  }
         """
 
         nearest_object = {
@@ -103,7 +133,7 @@ class Overview(Process):
         return nearest_object
 
     def cleanup(self):
-        """Clean up shared memory resources."""
+        """Cleans up shared memory resources to prevent memory leaks."""
         try:
             self.shared_memory.close()
             self.shared_memory.unlink()
@@ -116,18 +146,16 @@ class Overview(Process):
             self.shared_memory = None
     
     def send_object_info(self, object_info: dict) -> None:
-        """Sending message using the shared memory.
+        """
+        Serializes and sends information about the detected object via shared memory.
+
+        This method takes the object information, calculates the target position in steps and angles
+        based on calibration data, formats it into a JSON message, and writes it to the
+        shared memory buffer for other processes to read.
 
         Args:
-            object_info (dict): object info like 
-            ```
-            {
-                "camera": int | None, # number of camera
-                "object": int | None, # number of object from camera results
-                "center": tuple[int, int] | None # object center on frame
-                "decriptor": torch.Tensor() | None # unique embedding for object 
-            }
-            ```
+            object_info (dict): A dictionary containing details about the nearest object,
+                                as returned by `get_nearest_object`.
 
         Returns:
             None
@@ -189,12 +217,7 @@ class Overview(Process):
                 
                 # get bboxes
                 if len(frames) == self.num_cameras:
-                    
-                    # detection_results = self.model.predict(
-                    #     frames, 
-                    #     conf=self.ov_config.DETECTOR_CONF,
-                    #     iou=self.ov_config.DETECTOR_IOU,
-                    #     )                    
+                                       
                     detection_results = []
                     for frame in frames:
                         result = self.model.predict(
@@ -227,12 +250,11 @@ class Overview(Process):
             self.cleanup()
 
     def stop(self):
-        """Stoped process"""
+        """Stops the process."""
         self.running = False
 
 def main():
-    """Main function for running process
-    """
+    """Initializes and runs the Overview process."""
 
     config = ConnactionsConfig()
 

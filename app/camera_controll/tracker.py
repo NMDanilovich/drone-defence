@@ -90,7 +90,14 @@ class Tracker(Process):
 
         # shared memory informations
         self.memory_name: str = "object_data" 
-        self.shared_memory = None
+        try:
+            self.shared_memory = self.shared_memory = shared_memory.SharedMemory(name=self.memory_name)
+            self.single_mode = False
+        except FileNotFoundError as err:
+            logger.warning("Shered memmory not found. Single mode ON.")
+            self.shared_memory = None
+            self.single_mode = True
+
         self._last_data_hash = None
 
     def _init_camera(self):
@@ -156,10 +163,6 @@ class Tracker(Process):
                    - tuple or None: The (x, y) position of the target.
         """
 
-        # Create shared memory
-        if self.shared_memory is None:
-            self.shared_memory = shared_memory.SharedMemory(name=self.memory_name)
-
         try:
             # read the bytes from shared memory
             raw_bytes = self.shared_memory.buf[:]
@@ -221,7 +224,10 @@ class Tracker(Process):
             return False
 
         object_descriptor = descriptor(object_region)
-    
+
+        if self.single_mode and self.target_descriptor is None:
+            self.target_descriptor = object_descriptor
+
         similarity = F.cosine_similarity(
             self.target_descriptor, 
             object_descriptor, 
@@ -258,12 +264,14 @@ class Tracker(Process):
         if object_bbox in self.stop_area:
             speed = 0.0
         else:
-            speed = 1
+            speed = 0.2
 
-        self.movement_x = int(coord_to_steps(x, width, hor) * speed)
-        self.movement_y = -1 * int(coord_to_angle(y, height, vert) * speed) # -1 
+        movement_x = int(coord_to_steps(x, width, hor) * speed)
+        movement_y = -1 * int(coord_to_angle(y, height, vert) * speed) # -1 is reverce. Need to engine coordinates 
 
         logger.debug(f"Movement calculated: X={self.movement_x}, Y={self.movement_y}")
+
+        return movement_x, movement_y
 
     def _draw_debug_info(self, frame):
         """Draws debugging information on the frame."""
@@ -328,7 +336,7 @@ class Tracker(Process):
             while self.is_running:
                 
                 # wait message
-                if self.tracked is False:
+                if self.tracked is False and not self.single_mode:
                     self.tracked, self.target_descriptor, position = self.get_tracking_info()
                     if position is not None:
                         self.controller.move_to_absolute(*position)
@@ -348,26 +356,27 @@ class Tracker(Process):
                         iou=self.t_config.DETECTOR_IOU,
                         device="cuda:0")
                     
+                    # validation 
                     target_found, obj_bbox = self.detect_val(detection_results, frame)
 
                     if target_found:
                         self.last_found_time = time.time()
-                        self.calculate_movement(obj_bbox)
+                        self.movement_x, self.movement_y = self.calculate_movement(obj_bbox)
                     else:
+                        # reset movements
                         self.movement_x = 0
                         self.movement_y = 0
                         
                         is_found = self.last_found_time is not None
-                        time_cond = time.time() - self.last_found_time > 5
-                        
-                        if is_found and time_cond:
+
+                        if is_found and time.time() - self.last_found_time > 5:
                             self.tracked = False
                             self.last_found_time = None
 
 
                     if self.movement_x != 0 or self.movement_y != 0:
                         self.controller.move_relative(self.movement_x, self.movement_y)
-
+                        
                 except Exception as e:
                     logger.error(f"Error in detection: {e}")
                     continue
@@ -389,8 +398,8 @@ class Tracker(Process):
             logger.error(f"Unexpected error in tracking loop: {e}")
         finally:
             logger.info("Cleaning up...")
-            self.cleanup()
             stream.stop()
+            self.cleanup()
             cv2.destroyAllWindows()
 
 def main():

@@ -4,8 +4,6 @@ It allows for interactive control, moving to a predefined start position, and ma
 """
 import argparse
 
-import cv2
-
 from sources import CarriageController
 
 def interactive_mode():

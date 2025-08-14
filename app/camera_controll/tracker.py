@@ -265,14 +265,26 @@ class Tracker(Process):
         dist = np.linalg.norm(point1 - point2)
         return dist
 
-    def get_move(self):
+    def get_move(self) -> dict:
+        """Getting move to object information
+
+        Returns:
+            dict: object information has a structure:
+        ```python
+        {
+            "next_move": [tuple[int, int]]  # move to position for engine
+            "distance": [int]  # pixels between drone bbox center and frame center
+            "time_move": [float]  # time for engine move
+        }
+        ```
+        """
         x_move, y_move = self.target_drone.rel_coord
         next_move = int(x_move * self.movement_gain), int(y_move * self.movement_gain)
         time = self.calc_time(*next_move)
         drone_center = self.target_drone.xywh[:2]
         distance = self.calc_dist(self.frame_center, drone_center)
 
-        return next_move, time, distance
+        return {"next_move": next_move, "distance": distance, "time_move": time}
 
     def cleanup(self):
         """
@@ -324,7 +336,7 @@ class Tracker(Process):
                     self.controller.move_to_absolute(*self.target_drone.abs_coord)
 
 
-                last_dist = np.float("inf")
+                plan_move = None
                 while True:
                     # get video frame
                     self.frame = stream.read()
@@ -336,21 +348,36 @@ class Tracker(Process):
                     self.update_target_drone()
 
                     if self.target_drone is not None:
-                        if last_dist is None:
-                            next_move, distance, time_move = self.get_move()
+                        if plan_move is None:
+                            # get plan
+                            plan_move = self.get_move()
+                            start_move_time = time.time()
+                            self.controller.move_relative(*plan_move["next_move"])
+                            # half step
+                            self.movement_gain = 0.5
 
-                        self.controller.move_relative(*next_move)
+                        # actual state
+                        cur_move = self.get_move()
 
-                        if np.allclose(distance, last_dist, rtol=5):
-                            pass
-                        elif distance > last_dist:
-                            pass
-                        elif distance < last_dist:
-                            pass
-                        elif np.allclose(distance - last_dist, 0, rtol=5):
-                            continue
+                        # distances is equal
+                        if np.allclose(plan_move["distance"], cur_move["distance"], rtol=5):
+                            if time.time() - start_move_time >= plan_move["time_move"]:
+                                self.movement_gain = 1 # full step
+                                plan_move = None # reset plan to repeat movement
 
-                        last_dist = distance.copy()
+                        # target is done
+                        elif np.allclose(cur_move["distance"], 0, rtol=5):
+                            plan_move = None
+
+                        elif cur_move["distance"] > plan_move["distance"]:
+                            self.movement_gain = 1
+                            plan_move = None
+
+                        elif cur_move["distance"] < plan_move["distance"]:
+                            if time.time() - start_move_time >= plan_move["time_move"]:
+                                self.movement_gain = 1.5
+                                plan_move = None                                
+
 
                     else:
                         logger.warning("No drone detected")

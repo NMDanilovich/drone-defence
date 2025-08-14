@@ -1,9 +1,12 @@
+from dataclasses import dataclass
 from multiprocessing import Process, shared_memory
+import uuid
 import json
 import time
 import logging
 
 import cv2
+import numpy as np
 from ultralytics import YOLO
 import torch
 import torch.nn.functional as F
@@ -16,14 +19,26 @@ from configs import ConnactionsConfig, TrackerConfig
 
 
 # Configure logging
-logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+logger.setLevel(logging.DEBUG)
 
 # Debug descriptor for testing
 DEBUG_DESCRIPTOR = descriptor(cv2.imread("./example.jpg"))
 
 # Constants
 DEFAULT_IMAGE_SIZE = 512
+
+@dataclass
+class TrackingObject:
+    id: int = uuid.uuid4()
+    id_class: int 
+    descriptor: torch.Tensor
+    rel_coord: tuple
+    abs_coord: tuple
+    xywh: tuple = None
+    tracked: bool = False
+    found_time: float = time.time()
+
 
 class Tracker(Process):
     """
@@ -65,27 +80,24 @@ class Tracker(Process):
         self.stream_path = template.format(login, password, camera_ip, camera_port)
 
         # get camera settings
-        self.frame_width = None
-        self.frame_height = None
-        self._init_camera()
-        
+        self.frame_width = self.t_config.WIDTH_FRAME
+        self.frame_height = self.t_config.HEIGHT_FRAME
+        self.frame_center = self.frame_width // 2, self.frame_height // 2
+
         # initialize AI model and UART controller
         self.model = YOLO(self.t_config.MODEL_PATH, task="detect")
         self.controller = CarriageController()
-        self.controller.move_to_start()
-
-        # set image areas
-        self._setup_tracking_areas()
+        # self.controller.move_to_start()
+        self.reset_timeout = 5 # sec
 
         # Carriage moves
         self.movement_x = 0
         self.movement_y = 0
+        self.movement_gain = 0.5
 
         # drone information
-        self.tracked = False
-        self.target_descriptor = None
-        self.current_target_id = None
-        self.last_found_time = None
+        self.target_drone: TrackingObject = None
+
         self.similarity_threshold = self.t_config.SIMILARITY_THRESHOLD
 
         # shared memory informations
@@ -98,56 +110,30 @@ class Tracker(Process):
             self.shared_memory = None
             self.single_mode = True
 
+        try:
+            self.shared_memory = self.shared_memory = shared_memory.SharedMemory(name=self.memory_name)
+            self.single_mode = False
+        except FileNotFoundError as err:
+            logger.warning("Shered memmory not found. Single mode ON.")
+            self.shared_memory = None
+            self.single_mode = True
+
         self._last_data_hash = None
 
-    def _init_camera(self):
-        cap = cv2.VideoCapture(self.stream_path)
-        
-        if not cap.isOpened():
-            raise FileNotFoundError(f"Stream not found: {self.stream_path}")
-            
-        self.frame_width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-        self.frame_height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-        cap.release()
-        
-        logger.info(f"Camera initialized: {self.frame_width}x{self.frame_height}")
-    
-    def _setup_tracking_areas(self):
-        """Sets up the tracking areas for movement control based on the frame dimensions."""
-        center_x = self.frame_width // 2
-        center_y = self.frame_height // 2
-        
-        # Stop area - when target is in this area, minimal movement
-        stop_width = int(self.frame_width * self.t_config.STOP_AREA_SCALE)
-        stop_height = int(self.frame_height * self.t_config.STOP_AREA_SCALE)
-        
-        self.stop_area = BBox(center_x, center_y, stop_width, stop_height)
-        
-        logger.info(f"Stop area configured: {self.stop_area}")
-    
+    def init_target_drone(self):
 
-    @staticmethod
-    def preprocess_frame(frame, flip_code=0, target_size=DEFAULT_IMAGE_SIZE):
-        """
-        Preprocesses a video frame for model inference.
+        self.target_drone = None
 
-        This static method flips and resizes the frame to the target dimensions required by the model.
+        tracked, descriptor, position = self.get_tracking_info()
+        if tracked:
+            self.target_drone = TrackingObject(
+                id_class=self.t_config.DRONE_CLASS_ID,
+                descriptor=descriptor,
+                abs_coord=position,
+                tracked=False
+            )
 
-        Args:
-            frame (numpy.ndarray): The input video frame.
-            flip_code (int, optional): The flip code for `cv2.flip`. 
-                                       0 for vertical, 1 for horizontal, -1 for both. Defaults to 0.
-            target_size (int, optional): The target size for resizing. Defaults to DEFAULT_IMAGE_SIZE.
-
-        Returns:
-            numpy.ndarray: The preprocessed frame.
-        """
-        if frame is None:
-            return None
-            
-        flipped_frame = cv2.flip(frame, flip_code)
-        resized_frame = cv2.resize(flipped_frame, (target_size, target_size))
-        return resized_frame
+        return self.target_drone
 
     def get_tracking_info(self):
         """
@@ -187,6 +173,107 @@ class Tracker(Process):
             print("\rError getting object information:", error, end="")
             return False, None, None
         
+    def update_target_drone(self) -> BBox:
+        
+        detection_results = self.model.predict(
+            self.frame,
+            conf=self.t_config.DETECTOR_CONF,
+            iou=self.t_config.DETECTOR_IOU,
+            device="cuda:0"
+        )
+        
+        max_area = 0
+        
+
+        for result in detection_results[0]:    
+            if result.boxes.cls != self.t_config.DRONE_CLASS_ID:
+                continue
+
+            x, y, w, h = result.boxes.xywh[0]
+            obj_area = w * h
+
+            if obj_area >= max_area:
+                max_area = obj_area
+
+                x1, y1, x2, y2 = map(int, result.boxes.xyxy[0])
+                object_region = self.frame[y1:y2, x1:x2]
+
+                desc = descriptor(object_region)
+
+                rel_coord = self.calc_position(x, y)
+                carriage_pos = self.controller.get_position()
+                abs_coord = carriage_pos[0] + rel_coord[0], carriage_pos[1] + rel_coord[1]
+
+                self.target_drone.descriptor = desc
+                self.target_drone.rel_coord = rel_coord
+                self.target_drone.abs_coord = abs_coord
+                self.target_drone.found_time = time.time()
+                self.target_drone.tracked = True
+                break
+        else:
+            self.target_drone = None
+
+        return self.target_drone
+    
+    def calc_position(self, x: int, y: int) -> tuple:
+
+        width = self.t_config.WIDTH_FRAME
+        hor = self.t_config.HORIZ_ANGLE
+        height = self.t_config.HEIGHT_FRAME
+        vert = self.t_config.VERTIC_ANGLE
+
+        x_pos = int(coord_to_steps(x, width, hor))
+        y_pos = -1 * int(coord_to_angle(y, height, vert)) # -1 is reverce. Need to engine coordinates 
+
+        logger.debug(f"Position calculated: X={x_pos}, Y={y_pos}")
+
+        return x_pos, y_pos
+
+    def calc_movement(self, x, y):
+
+        width = self.t_config.WIDTH_FRAME
+        hor = self.t_config.HORIZ_ANGLE
+        height = self.t_config.HEIGHT_FRAME
+        vert = self.t_config.VERTIC_ANGLE
+        
+        norm_x = (x - width / 2) / (width / 2)
+        norm_y = (y - height / 2) / (height / 2)
+        
+        speed_x = abs(norm_x) * 0.3
+        speed_y = abs(norm_y) * 0.3
+        
+        movement_x = int(coord_to_steps(x, width, hor) * speed_x)
+        movement_y = -1 * int(coord_to_angle(y, height, vert) * speed_y)
+        
+        logger.debug(f"Movement calculated: X={self.movement_x}, Y={self.movement_y}")
+
+        return movement_x, movement_y
+
+    def calc_time(self, x_steps, y_angles):
+        x_speed = self.controller.x_speed * self.controller.x_spd
+        y_speed = self.controller.y_speed
+
+        x_time = x_steps / x_speed
+        y_time = y_angles / y_speed
+
+        return x_time, y_time
+
+    @staticmethod
+    def calc_dist(point1, point2):
+        point1 = np.array(point1)
+        point2 = np.array(point2)
+        dist = np.linalg.norm(point1 - point2)
+        return dist
+
+    def get_move(self):
+        x_move, y_move = self.target_drone.rel_coord
+        next_move = int(x_move * self.movement_gain), int(y_move * self.movement_gain)
+        time = self.calc_time(*next_move)
+        drone_center = self.target_drone.xywh[:2]
+        distance = self.calc_dist(self.frame_center, drone_center)
+
+        return next_move, time, distance
+
     def cleanup(self):
         """
         Cleans up resources by closing the shared memory connection.
@@ -195,83 +282,13 @@ class Tracker(Process):
         if self.shared_memory is not None:
             try:
                 self.shared_memory.close()
-                logging.info(f"Disconnected from shared memory '{self.memory_name}'.")
+                logger.info(f"Disconnected from shared memory '{self.memory_name}'.")
             except Exception as e:
                 print(f"Error during receiver cleanup: {e}")
 
             finally:
                 self.shared_memory = None
                 
-    def update_target_id(self, frame, detection_result):
-        """
-        Updates the current target ID by comparing descriptor similarity.
-
-        This method computes the cosine similarity between the target descriptor and the
-        descriptor of the detected object. If the similarity is above the threshold,
-        the target ID is updated.
-
-        Args:
-            frame (numpy.ndarray): The current video frame.
-            detection_result: The YOLO detection result for a potential target.
-
-        Returns:
-            bool: True if the target ID was successfully updated, False otherwise.
-        """
-        x1, y1, x2, y2 = map(int, detection_result.boxes.xyxy[0])
-        object_region = frame[y1:y2, x1:x2]
-
-        if object_region.size == 0 or detection_result.boxes.id is None:
-            return False
-
-        object_descriptor = descriptor(object_region)
-
-        if self.single_mode and self.target_descriptor is None:
-            self.target_descriptor = object_descriptor
-
-        similarity = F.cosine_similarity(
-            self.target_descriptor, 
-            object_descriptor, 
-            dim=0
-        ).item()
-
-        if similarity > self.similarity_threshold:
-            self.current_target_id = detection_result.boxes.id[0].item()
-            logger.info(f"Target updated with similarity: {similarity:.3f}")
-            return True
-
-        else:
-            self.current_target_id = None
-            return False
-
-    def calculate_movement(self, object_bbox: BBox):
-        """
-        Calculates the required movement commands based on the target's position.
-
-        If the target is within the central "stop area," no movement is generated.
-        Otherwise, it calculates the necessary steps and angles to move the carriage.
-
-        Args:
-            object_bbox (BBox): The bounding box of the target object.
-        """
-
-        x, y = object_bbox[:2]
-
-        width = self.t_config.WIDTH_FRAME
-        hor = self.t_config.HORIZ_ANGLE
-        height = self.t_config.HEIGHT_FRAME
-        vert = self.t_config.VERTIC_ANGLE
-
-        if object_bbox in self.stop_area:
-            speed = 0.0
-        else:
-            speed = 0.2
-
-        movement_x = int(coord_to_steps(x, width, hor) * speed)
-        movement_y = -1 * int(coord_to_angle(y, height, vert) * speed) # -1 is reverce. Need to engine coordinates 
-
-        logger.debug(f"Movement calculated: X={self.movement_x}, Y={self.movement_y}")
-
-        return movement_x, movement_y
 
     def _draw_debug_info(self, frame):
         """Draws debugging information on the frame."""
@@ -290,106 +307,61 @@ class Tracker(Process):
         
         return frame
 
-    def detect_val(self, detection_results, frame) -> BBox:
-        """
-        Validates detection results to identify the tracked drone.
-
-        This method iterates through detection results, filters for the correct class ID,
-        and updates the target ID if a match is found based on descriptor similarity.
-
-        Args:
-            detection_results: The YOLO detection results.
-            frame (numpy.ndarray): The current video frame.
-
-        Returns:
-            tuple: A tuple containing:
-                   - bool: True if the target was found, False otherwise.
-                   - BBox or None: The bounding box of the target if found.
-        """
-        target_found = False
-        target_bbox = None
-
-        for result in detection_results[0]:    
-            if result.boxes.cls != self.t_config.DRONE_CLASS_ID:
-                continue
-
-            if self.current_target_id is None:
-                if self.update_target_id(frame, result):
-                    target_found = True
-            elif self.current_target_id == result.boxes.id[0]:
-                target_found = True
-            else:
-                continue
-        
-            target_bbox = BBox(*result.boxes.xywh[0])
-        
-        return target_found, target_bbox
-
-
     def run(self):
         """The main tracking loop of the process."""
         stream = VideoStream(self.stream_path)
         self.is_running = True
-        
+
         try:
             logger.info("Starting carriage tracker...")
             while self.is_running:
                 
-                # wait message
-                if self.tracked is False and not self.single_mode:
-                    self.tracked, self.target_descriptor, position = self.get_tracking_info()
-                    if position is not None:
-                        self.controller.move_to_absolute(*position)
-                    continue
 
-                # get video frame
-                frame = stream.read()
+                if not self.single_mode:
+                    while self.target_drone is None:
+                        self.init_target_drone()
 
-                if frame is None:
-                    logger.warning("No frame received")
-                    continue
+                    self.controller.move_to_absolute(*self.target_drone.abs_coord)
+
+
+                last_dist = np.float("inf")
+                while True:
+                    # get video frame
+                    self.frame = stream.read()
+
+                    if self.frame is None:
+                        logger.warning("No frame received")
+                        continue
                     
-                try:
-                    detection_results = self.model.track(
-                        frame,
-                        conf=self.t_config.DETECTOR_CONF,
-                        iou=self.t_config.DETECTOR_IOU,
-                        device="cuda:0")
-                    
-                    # validation 
-                    target_found, obj_bbox = self.detect_val(detection_results, frame)
+                    self.update_target_drone()
 
-                    if target_found:
-                        self.last_found_time = time.time()
-                        self.movement_x, self.movement_y = self.calculate_movement(obj_bbox)
+                    if self.target_drone is not None:
+                        if last_dist is None:
+                            next_move, distance, time_move = self.get_move()
+
+                        self.controller.move_relative(*next_move)
+
+                        if np.allclose(distance, last_dist, rtol=5):
+                            pass
+                        elif distance > last_dist:
+                            pass
+                        elif distance < last_dist:
+                            pass
+                        elif np.allclose(distance - last_dist, 0, rtol=5):
+                            continue
+
+                        last_dist = distance.copy()
+
                     else:
-                        # reset movements
-                        self.movement_x = 0
-                        self.movement_y = 0
-                        
-                        is_found = self.last_found_time is not None
+                        logger.warning("No drone detected")
+                        if time.time() - self.target_drone.found_time > self.reset_timeout:
+                            logger.info("Reset system")
+                            self.target_drone = None
+                            break
 
-                        if is_found and time.time() - self.last_found_time > 5:
-                            self.tracked = False
-                            self.last_found_time = None
+                    #Debug visualization (uncomment for debugging)
+                    # debug_frame = self._draw_debug_info(frame.copy())
 
-
-                    if self.movement_x != 0 or self.movement_y != 0:
-                        self.controller.move_relative(self.movement_x, self.movement_y)
-                        
-                except Exception as e:
-                    logger.error(f"Error in detection: {e}")
-                    continue
-
-                # Debug visualization (uncomment for debugging)
-                # debug_frame = self._draw_debug_info(processed_frame.copy())
-                # cv2.imshow("Carriage Tracker", debug_frame)
-                
-                # Check for exit condition
-                key = cv2.waitKey(1) & 0xFF
-                if key == ord("q"):
-                    logger.info("Exit requested")
-                    break
 
         except KeyboardInterrupt:
             logger.info("Tracking interrupted by user")

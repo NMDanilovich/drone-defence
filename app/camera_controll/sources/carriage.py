@@ -55,6 +55,11 @@ class CarriageController:
         self.start_x_pos = self.config.START_X_POSITION
         self.start_y_pos = self.config.START_Y_POSITION
 
+        # engine sittings
+        self.x_speed = self.config.X_SPEED
+        self.y_speed = self.config.Y_SPEED
+        self.x_spd = self.config.STEPS90D / 90
+
         logger.info(f"CarriageController initialized - X range: [{self.min_x_steps}, {self.max_x_steps}], "
                    f"Y range: [{self.min_y_angle}, {self.max_y_angle}]")
 

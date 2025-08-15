@@ -47,7 +47,7 @@ class CarriageController:
         self.min_x_steps = self.config.MIN_X_COORD
         self.max_y_angle = self.config.MAX_Y_COORD
         self.min_y_angle = self.config.MIN_Y_COORD
-        
+    
         # UART communication
         self.uart = Uart(self.config.SERIAL_PORT, baudrate=self.config.BAUDRATE, is_blocking=False)
 
@@ -128,7 +128,34 @@ class CarriageController:
         logger.debug(f"Absolute move to: x={self.current_x_steps}, y={self.current_y_angle}")
         
         return True
-         
+
+    @threaded(is_blocking=False)
+    def continues_start(self):
+        self.x_move = 0
+        self.y_move = 0
+        self.continues_moving = True
+        
+        while self.continues_moving:
+            norm = max(self.x_move, self.y_move) * 0.1
+            self.x_move /= norm
+            self.y_move /= norm
+
+            self.curent_x_steps += self.x_move
+            self.curent_y_angle += self.y_move
+
+            self._send_absolute_position()
+            time.sleep(self.cont_speed)
+
+    def set_cont_moves(self, x_steps, y_angle, speed):
+        if self.continues_moving:
+            self.x_move = x_steps
+            self.y_move = y_angle
+            self.cont_speed = speed
+
+    def continues_stop(self):
+        self.cont_speed = 0
+        self.continues_moving = False
+    
     def get_position(self):
         """
         Get current absolute position.

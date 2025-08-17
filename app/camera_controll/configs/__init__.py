@@ -25,8 +25,7 @@ def read_config(path:str) -> dict:
                 config_dict[section][key] = float(value) if "." in value else int(value)
             except ValueError:
                 config_dict[section][key] = value
-                logging.warning(f"{key} is {type(value)}.")   
-    
+  
     
     return config_dict
 

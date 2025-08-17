@@ -7,10 +7,10 @@ from configs import ConnactionsConfig
 def main():
     config = ConnactionsConfig()
 
-    logins = [config.data[camera]["login"] for camera in config.data if camera.startswith("ov")]
-    passwords = [config.data[camera]["password"] for camera in config.data if camera.startswith("ov")]
-    cameras_ips = [config.data[camera]["ip"] for camera in config.data if camera.startswith("ov")]
-    cameras_ports = [config.data[camera]["port"] for camera in config.data if camera.startswith("ov")]
+    logins = [config.data[camera]["login"] for camera in config.data if camera.startswith("OV")]
+    passwords = [config.data[camera]["password"] for camera in config.data if camera.startswith("OV")]
+    cameras_ips = [config.data[camera]["ip"] for camera in config.data if camera.startswith("OV")]
+    cameras_ports = [config.data[camera]["port"] for camera in config.data if camera.startswith("OV")]
     
     overview = Overview(
         logins=logins, 

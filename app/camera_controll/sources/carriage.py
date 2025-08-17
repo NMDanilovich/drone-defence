@@ -11,6 +11,7 @@ import logging
 # ---------------------------------
 
 from configs import CarriageConfig
+from .threads_utils import threaded
 from .uartapi import Uart, JETSON_SERIAL
 
 # Configure logging

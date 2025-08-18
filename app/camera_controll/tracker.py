@@ -1,4 +1,5 @@
 from multiprocessing import Process, shared_memory
+from dataclasses import dataclass
 import json
 import time
 import logging
@@ -14,7 +15,19 @@ from sources import coord_to_steps, coord_to_angle
 from sources import CarriageController
 from configs import ConnactionsConfig, TrackerConfig
 
+@dataclass
+class TrackObject:
+    rel: tuple = None
+    abs: tuple = None
+    bbox: tuple = None
+    _first_time = time.time()
+    time: float = _first_time
+    
 
+    def update_time(self):
+        self.time = time.time()
+
+ 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -77,15 +90,9 @@ class Tracker(Process):
         # set image areas
         self._setup_tracking_areas()
 
-        # Carriage moves
-        self.movement_x = 0
-        self.movement_y = 0
-
         # drone information
-        self.tracked = False
-        self.target_descriptor = None
-        self.current_target_id = None
-        self.last_found_time = None
+        self.target = None
+        self.target_timeout = 25
         self.similarity_threshold = self.t_config.SIMILARITY_THRESHOLD
 
         # shared memory informations
@@ -202,129 +209,58 @@ class Tracker(Process):
             finally:
                 self.shared_memory = None
                 
-    def update_target_id(self, frame, detection_result):
-        """
-        Updates the current target ID by comparing descriptor similarity.
+    def update_target(self) -> BBox:
+        
+        detection_results = self.model.predict(
+            self.frame,
+            conf=self.t_config.DETECTOR_CONF,
+            iou=self.t_config.DETECTOR_IOU,
+            device="cuda:0"
+        )
+        
+        max_area = 0
+        
 
-        This method computes the cosine similarity between the target descriptor and the
-        descriptor of the detected object. If the similarity is above the threshold,
-        the target ID is updated.
+        for result in detection_results[0]:    
+            if result.boxes.cls != self.t_config.DRONE_CLASS_ID:
+                continue
 
-        Args:
-            frame (numpy.ndarray): The current video frame.
-            detection_result: The YOLO detection result for a potential target.
+            x, y, w, h = result.boxes.xywh[0].item()
+            obj_area = w * h
 
-        Returns:
-            bool: True if the target ID was successfully updated, False otherwise.
-        """
-        x1, y1, x2, y2 = map(int, detection_result.boxes.xyxy[0])
-        object_region = frame[y1:y2, x1:x2]
+            if obj_area >= max_area:
+                max_area = obj_area
 
-        if object_region.size == 0 or detection_result.boxes.id is None:
-            return False
+                x1, y1, x2, y2 = map(int, result.boxes.xyxy[0])
+                object_region = self.frame[y1:y2, x1:x2]
 
-        object_descriptor = descriptor(object_region)
+                desc = descriptor(object_region)
 
-        if self.single_mode and self.target_descriptor is None:
-            self.target_descriptor = object_descriptor
+                rel_coord = self.calc_position(x, y)
+                carriage_pos = self.controller.get_position()
+                abs_coord = carriage_pos[0] + rel_coord[0], carriage_pos[1] + rel_coord[1]
 
-        similarity = F.cosine_similarity(
-            self.target_descriptor, 
-            object_descriptor, 
-            dim=0
-        ).item()
+                self.target = TrackObject(rel_coord, abs_coord, (x, y, w, h))
 
-        if similarity > self.similarity_threshold:
-            self.current_target_id = detection_result.boxes.id[0].item()
-            logger.info(f"Target updated with similarity: {similarity:.3f}")
-            return True
+        if self.target is not None:
+            if time.time() - self.target.time > self.target_timeout:
+                self.target = None
 
-        else:
-            self.current_target_id = None
-            return False
+        return self.target
 
-    def calculate_movement(self, object_bbox: BBox):
-        """
-        Calculates the required movement commands based on the target's position.
-
-        If the target is within the central "stop area," no movement is generated.
-        Otherwise, it calculates the necessary steps and angles to move the carriage.
-
-        Args:
-            object_bbox (BBox): The bounding box of the target object.
-        """
-
-        x, y = object_bbox[:2]
+    def calc_position(self, x: int, y: int) -> tuple:
 
         width = self.t_config.WIDTH_FRAME
         hor = self.t_config.HORIZ_ANGLE
         height = self.t_config.HEIGHT_FRAME
         vert = self.t_config.VERTIC_ANGLE
 
-        if object_bbox in self.stop_area:
-            speed = 0.0
-        else:
-            speed = 0.2
+        x_pos = int(coord_to_steps(x, width, hor))
+        y_pos = -1 * int(coord_to_angle(y, height, vert)) # -1 is reverce. Need to engine coordinates 
 
-        movement_x = int(coord_to_steps(x, width, hor) * speed)
-        movement_y = -1 * int(coord_to_angle(y, height, vert) * speed) # -1 is reverce. Need to engine coordinates 
+        logger.debug(f"Position calculated: X={x_pos}, Y={y_pos}")
 
-        logger.debug(f"Movement calculated: X={self.movement_x}, Y={self.movement_y}")
-
-        return movement_x, movement_y
-
-    def _draw_debug_info(self, frame):
-        """Draws debugging information on the frame."""
-        # Draw stop area
-        cv2.rectangle(
-            frame, 
-            self.stop_area.xyxy[:2], 
-            self.stop_area.xyxy[2:], 
-            (0, 255, 0), 
-            2
-        )
-        
-        # Add status text
-        status_text = f"Tracking: {self.is_tracking}, ID: {self.current_target_id}"
-        cv2.putText(frame, status_text, (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
-        
-        return frame
-
-    def detect_val(self, detection_results, frame) -> BBox:
-        """
-        Validates detection results to identify the tracked drone.
-
-        This method iterates through detection results, filters for the correct class ID,
-        and updates the target ID if a match is found based on descriptor similarity.
-
-        Args:
-            detection_results: The YOLO detection results.
-            frame (numpy.ndarray): The current video frame.
-
-        Returns:
-            tuple: A tuple containing:
-                   - bool: True if the target was found, False otherwise.
-                   - BBox or None: The bounding box of the target if found.
-        """
-        target_found = False
-        target_bbox = None
-
-        for result in detection_results[0]:    
-            if result.boxes.cls != self.t_config.DRONE_CLASS_ID:
-                continue
-
-            if self.current_target_id is None:
-                if self.update_target_id(frame, result):
-                    target_found = True
-            elif self.current_target_id == result.boxes.id[0]:
-                target_found = True
-            else:
-                continue
-        
-            target_bbox = BBox(*result.boxes.xywh[0])
-        
-        return target_found, target_bbox
-
+        return x_pos, y_pos
 
     def run(self):
         """The main tracking loop of the process."""
@@ -350,32 +286,23 @@ class Tracker(Process):
                     continue
                     
                 try:
-                    detection_results = self.model.track(
-                        frame,
-                        conf=self.t_config.DETECTOR_CONF,
-                        iou=self.t_config.DETECTOR_IOU,
-                        device="cuda:0")
-                    
-                    # validation 
-                    target_found, obj_bbox = self.detect_val(detection_results, frame)
+                    self.update_target()
 
-                    if target_found:
-                        self.last_found_time = time.time()
-                        self.movement_x, self.movement_y = self.calculate_movement(obj_bbox)
-                    else:
-                        # reset movements
-                        self.movement_x = 0
-                        self.movement_y = 0
+                    if self.target is not None:
+                        x_rel, y_rel = self.target.rel
+                        # Determine direction based on the relative position of the target
+                        x_direction = 1 if x_rel > 0 else -1 if x_rel < 0 else 0
+                        y_direction = 1 if y_rel > 0 else -1 if y_rel < 0 else 0
                         
-                        is_found = self.last_found_time is not None
+                        # Set a constant speed or calculate it based on distance
+                        speed = 5  # Example: constant speed
+                        
+                        self.controller.set_continuous_movement(x_direction, y_direction, speed)
+                        self.controller.start_continuous_movement() # Start if not already running
+                        
+                    else:
+                        self.controller.stop_continuous_movement()
 
-                        if is_found and time.time() - self.last_found_time > 5:
-                            self.tracked = False
-                            self.last_found_time = None
-
-
-                    if self.movement_x != 0 or self.movement_y != 0:
-                        self.controller.move_relative(self.movement_x, self.movement_y)
                         
                 except Exception as e:
                     logger.error(f"Error in detection: {e}")

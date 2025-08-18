@@ -52,6 +52,12 @@ class CarriageController:
         # UART communication
         self.uart = Uart(self.config.SERIAL_PORT, baudrate=self.config.BAUDRATE, is_blocking=False)
 
+        # Continuous movement state
+        self.is_moving_continuously = False
+        self.x_direction = 0
+        self.y_direction = 0
+        self.continuous_speed = 0.0
+
         # setup start position
         self.start_x_pos = self.config.START_X_POSITION
         self.start_y_pos = self.config.START_Y_POSITION
@@ -131,31 +137,58 @@ class CarriageController:
         return True
 
     @threaded(is_blocking=False)
-    def continues_start(self):
-        self.x_move = 0
-        self.y_move = 0
-        self.continues_moving = True
+    def _continuous_movement_loop(self):
+        """
+        Private method to handle the continuous movement loop.
+        Runs in a separate thread.
+        """
+        logger.info("Starting continuous movement loop.")
+        self.is_moving_continuously = True
         
-        while self.continues_moving:
-            norm = max(self.x_move, self.y_move) * 0.1
-            self.x_move /= norm
-            self.y_move /= norm
+        while self.is_moving_continuously:
+            if self.continuous_speed > 0 and (self.x_direction != 0 or self.y_direction != 0):
+                # Normalize the direction vector
+                magnitude = (self.x_direction**2 + self.y_direction**2)**0.5
+                
+                if magnitude > 0:
+                    norm_x = self.x_direction / magnitude
+                    norm_y = self.y_direction / magnitude
+                else:
+                    norm_x, norm_y = 0, 0
 
-            self.curent_x_steps += self.x_move
-            self.curent_y_angle += self.y_move
+                # Calculate movement based on speed and a fixed time interval
+                update_interval = 0.05  # 20Hz update rate
+                delta_x = norm_x * self.continuous_speed * update_interval
+                delta_y = norm_y * self.continuous_speed * update_interval
+                
+                self.move_relative(delta_x, delta_y)
+            
+            time.sleep(0.05) # Fixed sleep time to control update rate
+            
+        logger.info("Continuous movement loop stopped.")
 
-            self._send_absolute_position()
-            time.sleep(self.cont_speed)
+    def start_continuous_movement(self):
+        """Starts the continuous movement background thread."""
+        if not self.is_moving_continuously:
+            self._continuous_movement_loop()
 
-    def set_cont_moves(self, x_steps, y_angle, speed):
-        if self.continues_moving:
-            self.x_move = x_steps
-            self.y_move = y_angle
-            self.cont_speed = speed
+    def set_continuous_movement(self, x_direction, y_direction, speed):
+        """
+        Set the direction and speed for continuous movement.
 
-    def continues_stop(self):
-        self.cont_speed = 0
-        self.continues_moving = False
+        Args:
+            x_direction (int): -1 for left, 1 for right, 0 for no horizontal movement.
+            y_direction (int): -1 for down, 1 for up, 0 for no vertical movement.
+            speed (float): Movement speed in units per second (steps/s or degrees/s).
+        """
+        self.x_direction = x_direction
+        self.y_direction = y_direction
+        self.continuous_speed = speed
+
+    def stop_continuous_movement(self):
+        """Stops the continuous movement."""
+        self.is_moving_continuously = False
+        self.continuous_speed = 0
     
     def get_position(self):
         """

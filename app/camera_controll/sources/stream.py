@@ -27,7 +27,7 @@ class VideoStream:
         self.cap = cv2.VideoCapture(stream_path)
         if not self.cap.isOpened():
             self.is_running = False
-            logging.error(cv2.error, f"Error: Could not open camera {stream_path}")
+            logging.error(f"Error: Could not open camera {stream_path}")
             raise cv2.error()
         else:
             self.is_running = True
@@ -47,11 +47,11 @@ class VideoStream:
             ret, frame = self.cap.read()
             if not ret:
                 print(f"Error: Failed to read frame from camera {self.stream_path}")
-                self.stopped = True
+                self.is_running = True
                 break
             
             self.frame = frame
-            time.sleep(0.01) # Small delay to prevent excessive CPU usage
+            time.sleep(0.005) # Small delay to prevent excessive CPU usage
 
     def read(self) -> np.ndarray:
         """Read actual frame

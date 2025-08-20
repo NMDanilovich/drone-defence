@@ -25,6 +25,18 @@ DEBUG_DESCRIPTOR = descriptor(cv2.imread("./example.jpg"))
 # Constants
 DEFAULT_IMAGE_SIZE = 512
 
+@dataclass
+class TrackingObject:
+    id: int
+    id_class: int
+    descriptor: torch.Tensor
+    rel_coord: tuple
+    abs_coord: tuple
+    drone_pos: tuple 
+    tracked: bool = False
+    found_time: float = time.time()
+
+
 class Tracker(Process):
     """
     A process-based drone tracker that controls the movement of a camera carriage.
@@ -187,6 +199,98 @@ class Tracker(Process):
             print("\rError getting object information:", error, end="")
             return False, None, None
         
+    def init_current_drone(self) -> BBox:
+        
+        detection_results = self.model.predict(
+            self.frame,
+            conf=self.t_config.DETECTOR_CONF,
+            iou=self.t_config.DETECTOR_IOU,
+            device="cuda:0"
+        )
+        
+        max_area = 0
+        self.current_drone = None
+
+        for result in detection_results[0]:    
+            if result.boxes.cls != self.t_config.DRONE_CLASS_ID:
+                continue
+
+            x, y, w, h = result.boxes.xywh[0]
+            obj_area = w * h
+
+            if obj_area >= max_area:
+                max_area = obj_area
+
+                x1, y1, x2, y2 = map(int, result.boxes.xyxy[0])
+                object_region = self.frame[y1:y2, x1:x2]
+
+                desc = descriptor(object_region)
+
+                if self.single_mode:
+                    tracked = True
+                else:
+                    similarity = F.cosine_similarity(
+                            self.target_drone.descriptor, 
+                            desc, 
+                            dim=0
+                        ).item()
+
+                    if similarity > self.similarity_threshold:
+                        tracked = True
+                    else:
+                        tracked = False
+
+                rel_coord = self.calc_position(x, y)
+                carriage_pos = self.controller.get_position()
+                abs_coord = carriage_pos[0] + rel_coord[0], carriage_pos[1] + rel_coord[1]
+
+                self.current_drone = TrackingObject(
+                    id=uuid.uuid4(),
+                    id_class=self.t_config.DRONE_CLASS_ID,
+                    descriptor=desc,
+                    rel_coord=rel_coord,
+                    abs_coord=abs_coord,
+                    drone_pos=result.boxes.xyxy[0],
+                    tracked=tracked
+                )
+
+        return self.current_drone
+    
+
+    def calc_position(self, x: int, y: int) -> tuple:
+
+        width = self.t_config.WIDTH_FRAME
+        hor = self.t_config.HORIZ_ANGLE
+        height = self.t_config.HEIGHT_FRAME
+        vert = self.t_config.VERTIC_ANGLE
+
+        x_pos = int(coord_to_steps(x, width, hor))
+        y_pos = -1 * int(coord_to_angle(y, height, vert)) # -1 is reverce. Need to engine coordinates 
+
+        logger.debug(f"Position calculated: X={x_pos}, Y={y_pos}")
+
+        return x_pos, y_pos
+
+    def calc_movement(self, x, y):
+
+        width = self.t_config.WIDTH_FRAME 
+        hor = self.t_config.HORIZ_ANGLE 
+        height = self.t_config.HEIGHT_FRAME
+        vert = self.t_config.VERTIC_ANGLE
+        
+        norm_x = (x - width / 2) / (width / 2)
+        norm_y = (y - height / 2) / (height / 2)
+        
+        speed_x = abs(norm_x) * 0.1
+        speed_y = abs(norm_y) * 0.1
+        
+        movement_x = int(coord_to_steps(x, width, hor) * speed_x)
+        movement_y = -1 * int(coord_to_angle(y, height, vert) * speed_y)
+        
+        logger.debug(f"Movement calculated: X={self.movement_x}, Y={self.movement_y}")
+
+        return movement_x, movement_y
+
     def cleanup(self):
         """
         Cleans up resources by closing the shared memory connection.
@@ -335,61 +439,56 @@ class Tracker(Process):
             logger.info("Starting carriage tracker...")
             while self.is_running:
                 
-                # wait message
-                if self.tracked is False and not self.single_mode:
-                    self.tracked, self.target_descriptor, position = self.get_tracking_info()
-                    if position is not None:
-                        self.controller.move_to_absolute(*position)
-                    continue
+                if not self.single_mode:
+                    while self.target_drone is None:
+                        self.init_target_drone()
 
-                # get video frame
-                frame = stream.read()
+                    self.controller.move_to_absolute(*self.target_drone.abs_coord)
 
-                if frame is None:
-                    logger.warning("No frame received")
-                    continue
-                    
-                try:
+                iteration_time = time.time()
+                detect_time = time.time()
+                fire = False
+                while True:
+                    # get video frame
+                    logger.debug(f"iteration time: {time.time() - iteration_time}")
+                    self.frame = stream.read()
+                    iteration_time = time.time()
+
+                    if self.frame is None:
+                        logger.warning("No frame received")
+                        continue
+                        
+
                     detection_results = self.model.track(
-                        frame,
+                        self.frame,
                         conf=self.t_config.DETECTOR_CONF,
                         iou=self.t_config.DETECTOR_IOU,
                         device="cuda:0")
                     
                     # validation 
-                    target_found, obj_bbox = self.detect_val(detection_results, frame)
+                    target_found, obj_bbox = self.detect_val(detection_results, self.frame)
 
                     if target_found:
                         self.last_found_time = time.time()
                         self.movement_x, self.movement_y = self.calculate_movement(obj_bbox)
                     else:
-                        # reset movements
-                        self.movement_x = 0
-                        self.movement_y = 0
-                        
-                        is_found = self.last_found_time is not None
+                        detect_time = time.time()
 
-                        if is_found and time.time() - self.last_found_time > 5:
-                            self.tracked = False
-                            self.last_found_time = None
+                    if self.current_drone.tracked:
+                        self.current_drone.rel_coord
+                        self.controller.move_relative(*self.current_drone.rel_coord)
+                        # self.controller.move_to_absolute(*self.current_drone.abs_coord)
+                        time.sleep(0.5)
+                        if self.current_drone.drone_pos in self.stop_area and not fire:
+                            self.controller.fire("fire")
+                            fire = True
+                        elif self.current_drone.drone_pos not in self.stop_area:
+                            self.controller.fire("stop") 
+                            fire = False 
 
+                    #Debug visualization (uncomment for debugging)
+                    # debug_frame = self._draw_debug_info(frame.copy())
 
-                    if self.movement_x != 0 or self.movement_y != 0:
-                        self.controller.move_relative(self.movement_x, self.movement_y)
-                        
-                except Exception as e:
-                    logger.error(f"Error in detection: {e}")
-                    continue
-
-                # Debug visualization (uncomment for debugging)
-                # debug_frame = self._draw_debug_info(processed_frame.copy())
-                # cv2.imshow("Carriage Tracker", debug_frame)
-                
-                # Check for exit condition
-                key = cv2.waitKey(1) & 0xFF
-                if key == ord("q"):
-                    logger.info("Exit requested")
-                    break
 
         except KeyboardInterrupt:
             logger.info("Tracking interrupted by user")

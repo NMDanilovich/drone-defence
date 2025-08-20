@@ -137,6 +137,9 @@ class CarriageController:
             tuple: (x_steps, y_angle)
         """
         return (self.current_x_steps, self.current_y_angle)
+    
+    def fire(self, mode):
+        self.uart.fire_control(mode)
               
     def _send_absolute_position(self):
         """Send current absolute position via UART."""

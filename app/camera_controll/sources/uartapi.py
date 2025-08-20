@@ -57,17 +57,42 @@ class Uart:
                 # Ждем подтверждения
                 response = self.port.readline().decode().strip()
                 logger.info("Arduino answer: %s", response)
+            except Exception as error:
+                logger.error("SenderError: %s", error)
+
+        return sender()
+        
+    def fire_control(self, mode):
+    
+        @threaded(is_blocking=self.is_blocking)
+        def sender():
+            try:
+                if mode == "fire":
+                    command = "POWER ON\n"
+                elif mode == "stop":    
+                    command = "POWER OFF\n"
+                print(command)
+                self.port.write(command.encode())
+                
+                # Ждем подтверждения
+                response = self.port.readline().decode().strip()
+                logger.info("Arduino answer: %s", response)
                 # time.sleep(0.1)
             except Exception as error:
                 logger.error("SenderError: %s", error)
 
         return sender()
+        
 
 def main(x_steps:int=0, y_degrees:int=0):
     """Main function for hand testing
     """
     
     uart = Uart()
+    
+    #uart.fire_control("fire")
+    #time.sleep(2)
+    #uart.fire_control("stop")
 
     uart.send_coordinates(x_steps, y_degrees)
     time.sleep(0.1)
@@ -76,8 +101,11 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--x", type=int)
     parser.add_argument("--y", type=int)
+    parser.add_argument("--on")
+    parser.add_argument("--off")
 
     args = parser.parse_args()
     
+    #main()
     main(args.x, args.y)
 

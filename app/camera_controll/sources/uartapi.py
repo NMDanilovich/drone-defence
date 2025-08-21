@@ -33,30 +33,38 @@ class Uart:
 
         self.is_blocking = is_blocking
 
-    def send_coordinates(self, x_steps, y_angle):
+    def send_coordinates(self, x_angle, y_angle):
         """Send coordinates on Arduino
 
         Args:
-            x_steps (int): Number of steps of the yaw axis stepper motor
-            y_angle (int): Degrees of the pithc axis
+            x_angle (float): Degrees of the yaw axis
+            y_angle (float): Degrees of the pithc axis
         
         Examples:
         >>> uart = Uart()
-        >>> x_step = 1000
+        >>> x_degrees = 1000
         >>> y_degrees = 45
-        >>> uart.send_coordinates(x_step, y_degrees)
+        >>> uart.send_coordinates(x_degrees, y_degrees)
         """
 
         @threaded(is_blocking=self.is_blocking)
         def sender():
             try:
-                command = f"X{x_steps} Y{y_angle}\n"
+                command = f"X {x_angle} Y {y_angle}\n"
                 print(command)
                 self.port.write(command.encode())
                 
-                # Ждем подтверждения
-                response = self.port.readline().decode().strip()
-                logger.info("Arduino answer: %s", response)
+                end_marker = "TIME"
+
+                # wait response
+                while True:
+                    #if self.port.in_waiting > 0:
+                    response = self.port.readline().decode().strip()
+                    if response != "":
+                        logger.info("Uart answer: %s", response)
+                    if end_marker in response:
+                        break
+
             except Exception as error:
                 logger.error("SenderError: %s", error)
 
@@ -84,23 +92,25 @@ class Uart:
         return sender()
         
 
-def main(x_steps:int=0, y_degrees:int=0):
+def main(x_steps:float=0, y_degrees:float=0):
     """Main function for hand testing
     """
     
-    uart = Uart()
+    uart = Uart(is_blocking=False)
     
     #uart.fire_control("fire")
     #time.sleep(2)
     #uart.fire_control("stop")
 
-    uart.send_coordinates(x_steps, y_degrees)
-    time.sleep(0.1)
+    for i in range(20):
+        uart.send_coordinates(x_steps, y_degrees)
+        time.sleep(0.02)
+    time.sleep(1)
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--x", type=int)
-    parser.add_argument("--y", type=int)
+    parser.add_argument("--x", type=float)
+    parser.add_argument("--y", type=float)
     parser.add_argument("--on")
     parser.add_argument("--off")
 

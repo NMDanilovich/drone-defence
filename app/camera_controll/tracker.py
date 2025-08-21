@@ -130,7 +130,7 @@ class Tracker(Process):
                 else:
                     self.target.update(rel_coord, abs_coord, result.boxes.xyxy[0])
 
-        if time.time() - self.target.time > self.target.timeout: 
+        if self.target is not None and time.time() - self.target.time > self.target.timeout: 
             self.target = None
 
         return self.target
@@ -177,16 +177,17 @@ class Tracker(Process):
                     self.update_target()
                     
                     if self.target is not None:
+                        print(self.target.rel)
                         self.controller.move_relative(*self.target.rel)
 
                         # TODO rewrite this
                         # trying to continuous movement or synchrone detection method (by Petr)
                         time.sleep(0.5)
 
-                        if self.current_drone.drone_pos in self.stop_area and not fire:
+                        if self.target.box[:2] in self.stop_area and not fire:
                             self.controller.fire("fire")
                             fire = True
-                        elif self.current_drone.drone_pos not in self.stop_area:
+                        elif self.target.box[:2] not in self.stop_area and fire:
                             self.controller.fire("stop") 
                             fire = False 
 
@@ -200,7 +201,6 @@ class Tracker(Process):
             logger.info("Cleaning up...")
             self.controller.fire("stop")
             stream.stop()
-            self.cleanup()
             cv2.destroyAllWindows()
 
 def main():

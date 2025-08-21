@@ -3,11 +3,11 @@ import time
 import logging
 
 # -----------------DEBUG---------
-import os
-import sys
+# import os
+# import sys
 
-CONFIGS = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-sys.path.append(str(CONFIGS))
+# CONFIGS = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+# sys.path.append(str(CONFIGS))
 # ---------------------------------
 
 from configs import CarriageConfig

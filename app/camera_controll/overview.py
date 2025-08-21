@@ -65,6 +65,7 @@ class Overview(Process):
             self.streams_path.append(template.format(login, password, ip, port))
 
         self.model = YOLO(self.ov_config.MODEL_PATH, task="detect")
+        self.timeout = self.ov_config.TIMEOUT
 
         self.context: zmq.Context = None
         self.socket: zmq.Socket = None
@@ -194,7 +195,6 @@ class Overview(Process):
             }
 
             json_message = json.dumps(message)
-            json_bytes = json_message.encode('utf-8')
 
             # clear tail buffer
             self.socket.send_json(json_message)
@@ -244,7 +244,7 @@ class Overview(Process):
                 if nearest_object["object"] is not None:
                     self.send_object_info(nearest_object)
 
-                time.sleep(2)
+                time.sleep(self.timeout)
                 print("Total time:", time.time() - start)
 
         finally:

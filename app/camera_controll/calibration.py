@@ -81,6 +81,20 @@ def move_mode(x_steps:int=0, y_degrees:int=0, absolute:bool=False):
 
     print(f"New position: {controller.get_position()}")
 
+def auto_mode():
+    # Initialize controller
+    controller = CarriageController()
+    
+    # Show initial status
+    print(f"Moving to start position...")
+    print()
+    controller.move_to_start()
+    
+    
+
+    controller.save_position()
+
+    print(f"New position: {controller.get_position()}")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(prog="python3 calibration.py")

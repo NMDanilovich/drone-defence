@@ -5,7 +5,7 @@ import logging
 
 import cv2
 from ultralytics import YOLO
-import torch.nn.functional as F
+import zmq
 
 from sources import BBox
 from sources import VideoStream
@@ -66,6 +66,9 @@ class Tracker(Process):
         # drone information
         self.target = None
 
+        self.contexts: zmq.Context = None 
+        self.subscriber: zmq.Socket = None
+
     def _init_camera(self):
         cap = cv2.VideoCapture(self.stream_path)
         
@@ -90,10 +93,22 @@ class Tracker(Process):
         self.stop_area = BBox(center_x, center_y, stop_width, stop_height)
         
         logger.info(f"Stop area configured: {self.stop_area}")
-    
+
+    def _setup_connaction(self, filter_msg:str=""):
+        """Setting up connection to proxy
+        
+        Args:
+            filter_msg (str): Filter for ZMQ listner messeges. Can be used for recive message from specific camera.
+        """
+        self.ctx = zmq.Context.instance()
+        self.subscriber = self.ctx.socket(zmq.SUB)
+        self.subscriber.connect(f"tcp://127.0.0.1:8000")
+        self.subscriber.subscribe(filter_msg)
+
     def init_target(self):
-        # TODO Make zeromq brocker
-        self.target = TrackObject((0,0), (0, 119), (100, 100, 50, 50))
+        data = self.subscriber.recv_json()
+        position = data["x_position"], data["y_position"]
+        self.target = TrackObject((0,0), position, (100, 100, 50, 50))
         return self.target
         
     def update_target(self) -> BBox:
@@ -143,7 +158,7 @@ class Tracker(Process):
         height = self.t_config.HEIGHT_FRAME
         vert = self.t_config.VERTIC_ANGLE
 
-        x_pos = int(coord_to_steps(x, width, hor))
+        x_pos = int(coord_to_angle(x, width, hor))
         y_pos = -1 * int(coord_to_angle(y, height, vert)) # -1 is reverce. Need to engine coordinates 
 
         logger.debug(f"Position calculated: X={x_pos}, Y={y_pos}")
@@ -153,12 +168,12 @@ class Tracker(Process):
     def run(self):
         """The main tracking loop of the process."""
         stream = VideoStream(self.stream_path)
+        self._setup_connaction()
         self.is_running = True
         
         try:
             logger.info("Starting carriage tracker...")
             while self.is_running:
-                
                 
                 while self.target is None:
                     self.init_target()
@@ -182,7 +197,7 @@ class Tracker(Process):
 
                         # TODO rewrite this
                         # trying to continuous movement or synchrone detection method (by Petr)
-                        time.sleep(0.5)
+   
 
                         if self.target.box[:2] in self.stop_area and not fire:
                             self.controller.fire("fire")
@@ -190,6 +205,10 @@ class Tracker(Process):
                         elif self.target.box[:2] not in self.stop_area and fire:
                             self.controller.fire("stop") 
                             fire = False 
+                        
+                        while not self.controller.command_executed:
+                            print('Waiting for command execution')
+                            time.sleep(0.002)
 
         except KeyboardInterrupt:
             logger.info("Tracking interrupted by user")

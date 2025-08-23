@@ -55,6 +55,8 @@ class CarriageController:
         # setup start position
         self.start_x_pos = self.config.START_X_POSITION
         self.start_y_pos = self.config.START_Y_POSITION
+        
+        self.command_executed = False
 
         logger.info(f"CarriageController initialized - X range: [{self.min_x_angle}, {self.max_x_angle}], "
                    f"Y range: [{self.min_y_angle}, {self.max_y_angle}]")
@@ -141,6 +143,7 @@ class CarriageController:
         """Send current absolute position on Y and relative on X via UART."""
         try:
             self.uart.send_coordinates(self.delta_x, self.current_y_angle)
+            self.command_executed = self.uart.exec_status()
             logger.debug(f"Sent position: X{self.current_x_angle} Y{self.current_y_angle}")
         except Exception as e:
             logger.error(f"Failed to send coordinates via UART: {e}")

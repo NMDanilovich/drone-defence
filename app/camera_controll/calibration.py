@@ -81,6 +81,12 @@ def move_mode(x_steps:int=0, y_degrees:int=0, absolute:bool=False):
 
     print(f"New position: {controller.get_position()}")
 
+def zero_command():
+    # Initialize controller
+    controller = CarriageController()
+
+    controller.uart.zero_x_coordinates()
+
 def auto_mode():
     # Initialize controller
     controller = CarriageController()
@@ -90,7 +96,7 @@ def auto_mode():
     print()
     controller.move_to_start()
     
-    
+    # TODO make auto calibration
 
     controller.save_position()
 
@@ -103,6 +109,7 @@ if __name__ == "__main__":
     parser.add_argument("--abs", action="store_true", help="use this when you need absolute movement")
     parser.add_argument("--start", action="store_true", help="move to start position")
     parser.add_argument("--inter", action="store_true", help="for interactive mode relative movement")
+    parser.add_argument("--zero", action="store_true", help="zeroing x axis coordinate on controller")
 
     args = parser.parse_args()
     
@@ -110,5 +117,7 @@ if __name__ == "__main__":
         interactive_mode()
     elif args.start:
         start_mode()
+    elif args.zero:
+        zero_command()
     else:
         move_mode(args.x, args.y, args.abs)

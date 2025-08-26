@@ -102,7 +102,7 @@ class CarriageController:
         else:
             return False
     
-    def move_to_absolute(self, x_steps, y_angle):
+    def move_to_absolute(self, x_angle, y_angle):
         """
         Move carriage to absolute position.
         
@@ -114,12 +114,12 @@ class CarriageController:
             bool: True if movement was successful, False if limits exceeded
         """
         # Check limits
-        if self.check_limits(x_steps, y_angle):
+        if self.check_limits(x_angle, y_angle):
 
-            self.delta_x = self.current_x_angle - x_steps
+            self.delta_x = self.current_x_angle - x_angle
 
             # Update current position
-            self.current_x_angle = x_steps
+            self.current_x_angle = x_angle
             self.current_y_angle = y_angle
             
             # Send absolute coordinates via UART
@@ -142,7 +142,7 @@ class CarriageController:
             temp_info = temp_info.replace("STATUS", "").split()
             temp_dict = {}
             for msg in temp_info:
-                key, *value = msg.split(":")
+                key, value = msg.split(":")
                 temp_dict[key] = value
 
             self.contr_info = temp_dict
@@ -161,7 +161,10 @@ class CarriageController:
 
         self.update_info()
 
-        return (float(self.contr_info["X"][0]), float(self.contr_info["Y"][0]))
+        if self.contr_info:
+            return (float(self.contr_info["X"]), float(self.contr_info["Y"]))
+        else:
+            return (self.current_x_angle, self.current_y_angle)
     
     def fire(self, mode):
         self.uart.fire_control(mode)

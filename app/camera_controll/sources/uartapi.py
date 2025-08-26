@@ -4,7 +4,7 @@ import argparse
 
 import serial
 
-from threads_utils import threaded
+from .threads_utils import threaded
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -28,11 +28,12 @@ class Uart:
             baudrate=baudrate,
             parity=serial.PARITY_NONE,
             stopbits=serial.STOPBITS_ONE,
-            timeout=1
+            timeout=None
         )
 
         self.is_blocking = is_blocking
-        self.__executed = False
+        self.__executed = True
+        self.__results = []
         
         @threaded(is_blocking=is_blocking)
         def __sender(command:str, end_marker:str=None):
@@ -41,45 +42,56 @@ class Uart:
                 command (str): command for sending to uart
                 end_marker (str): marker of end recieve message. If None, will be received the one message. Default None.
             """
-            results = []
+            self.__results = []
             self.__executed = False
 
             try:
                 self.port.write(command.encode())
+
+                time.sleep(0.002)
+
                 while True:
                     response = self.port.readline().decode().strip()
 
                     if response == "":
                         logger.warning("None controller answer.")
+                        self.__executed = True
                         break
                     else:
                         logger.info("Controller answer: %s", response)
-                        results.append(response)
+                        self.__results.append(response)
 
                     if end_marker is None or end_marker in response:
                         self.__executed = True
                         break
+                        
             except Exception as error:
                 logger.error("Sender: %s", error)
                 
-            return results
+            return self.__results
         
         self.sender = __sender
-
+    
     def exec_status(self):
         return self.__executed
 
-    def get_controller_coordinates(self):
+    def get_info(self):
         """Getting controller information
         """
 
         command = "STATUS\n"
         end_marker = "FIRE"
 
-        return self.sender(command, end_marker)
+        if self.is_blocking:
+            return self.sender(command, end_marker)
+        else:
+            self.sender(command, end_marker).join()
+            return self.__results
 
     def zero_x_coordinates(self):
-        # TODO don't work
+        """Zeroing X coordinates on the controller
+        """
+
         command = "ZERO_X\n"
         
         return self.sender(command)
@@ -91,12 +103,6 @@ class Uart:
         Args:
             x_angle (float): Degrees of the yaw axis
             y_angle (float): Degrees of the pithc axis
-        
-        Examples:
-        >>> uart = Uart()
-        >>> x_degrees = 1000
-        >>> y_degrees = 45
-        >>> uart.send_coordinates(x_degrees, y_degrees)
         """
 
         command = f"XR{x_angle} YR{y_angle}\n"
@@ -110,12 +116,6 @@ class Uart:
         Args:
             x_angle (float): Degrees of the yaw axis
             y_angle (float): Degrees of the pithc axis
-        
-        Examples:
-        >>> uart = Uart()
-        >>> x_degrees = 1000
-        >>> y_degrees = 45
-        >>> uart.send_coordinates(x_degrees, y_degrees)
         """
 
         command = f"XA{x_angle} YA{y_angle}\n"
@@ -132,27 +132,16 @@ class Uart:
         return self.sender(command)
         
 
-def main(x_steps:float=0, y_degrees:float=0):
+def main(x_degrees:float=0, y_degrees:float=0):
     """Main function for hand testing
     """
     
     uart = Uart(is_blocking=True)
     
-    #uart.fire_control("fire")
-    #time.sleep(1)
-    #uart.fire_control("stop")
-    time.sleep(0.01)
-    print(uart.exec_status())
-    print(uart.get_controller_coordinates())
-    print(uart.exec_status())
-    time.sleep(0.01)
-    # uart.zero_x_coordinates()
-    uart.get_controller_coordinates()
-    # for i in range(60):
-    #     uart.send_relative(x_steps, y_degrees)
-    #     time.sleep(0.03)
-    
-    time.sleep(1)
+    # print(uart.get_info())
+    # uart.send_relative(x_degrees, y_degrees)
+    uart.send_absolute(x_degrees, y_degrees)
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()

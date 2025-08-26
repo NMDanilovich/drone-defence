@@ -5,7 +5,7 @@ import functools
 def threaded(*, is_blocking=True):
     """
     Decorator factory for non-blocking thread execution
-    - daemon: Thread exits with main program (default: True)
+    - is_blocking: Thread exits with main program (default: True)
     """
     def decorator(func):
         @functools.wraps(func)

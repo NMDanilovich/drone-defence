@@ -51,6 +51,10 @@ class CarriageController:
         
         # UART communication
         self.uart = Uart(self.config.SERIAL_PORT, baudrate=self.config.BAUDRATE, is_blocking=is_blocking)
+        
+        # Information (status) from controller
+        self.contr_info: dict
+        self.update_info()
 
         # setup start position
         self.start_x_pos = self.config.START_X_POSITION
@@ -77,7 +81,6 @@ class CarriageController:
             bool: True if movement was successful, False if limits exceeded
         """
         # Calculate new absolute positions
-        self.delta_x = delta_x
         new_x = self.current_x_angle + delta_x
         new_y = self.current_y_angle + delta_y
         
@@ -89,7 +92,8 @@ class CarriageController:
             self.current_y_angle = new_y
             
             # Send absolute coordinates via UART
-            self._send_position()
+            self.uart.send_relative(delta_x, delta_y)
+            self.command_executed = self.uart.exec_status()
             
             logger.debug(f"Relative move: delta_x={delta_x}, delta_y={delta_y} -> "
                         f"absolute: x={self.current_x_angle}, y={self.current_y_angle}")
@@ -119,14 +123,34 @@ class CarriageController:
             self.current_y_angle = y_angle
             
             # Send absolute coordinates via UART
-            self._send_position()
+            self.uart.send_absolute(self.current_x_angle, self.current_y_angle)
+            self.command_executed = self.uart.exec_status()
             
             logger.debug(f"Absolute move to: x={self.current_x_angle}, y={self.current_y_angle}")
             
             return True
         else: 
             return False
-         
+    
+    def update_info(self) -> dict:
+        """Recive the status information from controller and return dict (update the self.contr_info variable). 
+        """
+        temp_info = self.uart.get_info()
+        temp_info = temp_info[-1]
+
+        if temp_info.startswith("STATUS"):
+            temp_info = temp_info.replace("STATUS", "").split()
+            temp_dict = {}
+            for msg in temp_info:
+                key, *value = msg.split(":")
+                temp_dict[key] = value
+
+            self.contr_info = temp_dict
+        else:
+            self.contr_info = {}
+
+        return self.contr_info
+
     def get_position(self):
         """
         Get current absolute position.
@@ -134,20 +158,14 @@ class CarriageController:
         Returns:
             tuple: (x_steps, y_angle)
         """
-        return (self.current_x_angle, self.current_y_angle)
+
+        self.update_info()
+
+        return (float(self.contr_info["X"][0]), float(self.contr_info["Y"][0]))
     
     def fire(self, mode):
         self.uart.fire_control(mode)
               
-    def _send_position(self):
-        """Send current absolute position on Y and relative on X via UART."""
-        try:
-            self.uart.send_coordinates(self.delta_x, self.current_y_angle)
-            self.command_executed = self.uart.exec_status()
-            logger.debug(f"Sent position: X{self.current_x_angle} Y{self.current_y_angle}")
-        except Exception as e:
-            logger.error(f"Failed to send coordinates via UART: {e}")
-
     def check_limits(self, new_x, new_y):
 
         if self.min_x_angle != "None" or self.max_x_angle != "None":
@@ -162,13 +180,6 @@ class CarriageController:
         
         return True
 
-    def reset_position(self):
-        """Reset position tracking to (0, 0) without moving."""
-        self.current_x_angle = self.start_x_pos
-        self.current_y_angle = self.start_y_pos
-        self.move_to_absolute(self.start_x_pos, self.start_y_pos)
-        logger.info("Position reset to start")
-    
     def save_position(self):
         """Write the current values of position in config file.:"""
         
@@ -181,10 +192,10 @@ def main(x_steps:int=0, y_degrees:int=0, start:bool=False):
     """
     
     # Initialize controller
-    controller = CarriageController()
+    controller = CarriageController(True)
 
     # Show initial status
-    print(f"Position: {controller.get_position()}")
+    # print(f"Position: {controller.get_position()}")
     print()
 
     if start:
@@ -192,6 +203,7 @@ def main(x_steps:int=0, y_degrees:int=0, start:bool=False):
     else:
         controller.move_relative(x_steps, y_degrees)
     
+
     controller.save_position()
 
     print(f"New position: {controller.get_position()}")

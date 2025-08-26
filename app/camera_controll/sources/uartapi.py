@@ -80,7 +80,7 @@ class Uart:
         """
 
         command = "STATUS\n"
-        end_marker = "FIRE"
+        end_marker = "FIRING"
 
         if self.is_blocking:
             return self.sender(command, end_marker)
@@ -125,9 +125,9 @@ class Uart:
 
     def fire_control(self, mode):
         if mode == "fire":
-            command = "FIRE ON\n"
+            command = "FIRE:ON\n"
         elif mode == "stop":    
-            command = "FIRE OFF\n"
+            command = "FIRE:OFF\n"
 
         return self.sender(command)
         
@@ -139,8 +139,13 @@ def main(x_degrees:float=0, y_degrees:float=0):
     uart = Uart(is_blocking=True)
     
     # print(uart.get_info())
-    # uart.send_relative(x_degrees, y_degrees)
-    uart.send_absolute(x_degrees, y_degrees)
+    uart.fire_control('fire')
+    uart.send_relative(x_degrees, y_degrees)
+    uart.get_info()
+    uart.fire_control('stop')
+    uart.get_info()
+    #uart.zero_x_coordinates()
+    #uart.send_absolute(x_degrees, y_degrees)
 
 
 if __name__ == "__main__":

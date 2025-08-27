@@ -4,11 +4,10 @@ from multiprocessing import Process
 
 from ultralytics import YOLO
 import zmq
-import json
 
 from sources import VideoStream
 from sources import descriptor
-from sources import coord_to_steps, coord_to_angle
+from sources import coord_to_angle
 from configs import ConnactionsConfig, OverviewConfig, CalibrationConfig
 
 BUFF_SIZE = 15_000
@@ -185,8 +184,8 @@ class Overview(Process):
             height = self.ov_config.HEIGHT_FRAME
             vert = self.ov_config.VERTIC_ANGLE
 
-            x_position = int(x_calib + coord_to_angle(x, width, hor)) # steps
-            y_position = int(y_calib - coord_to_angle(y, height, vert)) # angles
+            x_position = float(x_calib + coord_to_angle(x, width, hor)) # angles
+            y_position = float(y_calib - coord_to_angle(y, height, vert)) # angles
 
             message = {
                 "object_descriptor": object_descriptor, 
@@ -194,10 +193,7 @@ class Overview(Process):
                 "y_position": y_position
             }
 
-            json_message = json.dumps(message)
-
-            # clear tail buffer
-            self.socket.send_json(json_message)
+            self.socket.send_json(message)
 
         except Exception as err:
             print("Send object error:", err)
@@ -226,6 +222,7 @@ class Overview(Process):
                     for frame in frames:
                         result = self.model.predict(
                             frame, 
+                            imgsz=(576, 1024),
                             conf=self.ov_config.DETECTOR_CONF,
                             iou=self.ov_config.DETECTOR_IOU,
                             )

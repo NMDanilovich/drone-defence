@@ -41,7 +41,6 @@ class CarriageController:
         # Current absolute position
         self.current_x_angle = self.config.LAST_X_POSITION # Current absolute X position in steps
         self.current_y_angle = self.config.LAST_Y_POSITION  # Current absolute Y position in degrees
-        self.delta_x = 0
 
         # Movement limits
         self.max_x_angle = self.config.MAX_X_COORD
@@ -116,8 +115,6 @@ class CarriageController:
         # Check limits
         if self.check_limits(x_angle, y_angle):
 
-            self.delta_x = self.current_x_angle - x_angle
-
             # Update current position
             self.current_x_angle = x_angle
             self.current_y_angle = y_angle
@@ -162,9 +159,10 @@ class CarriageController:
         self.update_info()
 
         if self.contr_info:
-            return (float(self.contr_info["X"]), float(self.contr_info["Y"]))
-        else:
-            return (self.current_x_angle, self.current_y_angle)
+            self.current_x_angle = float(self.contr_info["X"])
+            self.current_y_angle = float(self.contr_info["Y"])
+
+        return (self.current_x_angle, self.current_y_angle)
     
     def fire(self, mode):
         self.uart.fire_control(mode)

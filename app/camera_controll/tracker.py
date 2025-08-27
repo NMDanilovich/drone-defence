@@ -1,15 +1,16 @@
-from multiprocessing import Process, shared_memory
+from multiprocessing import Process
 from dataclasses import dataclass
 import time
 import logging
 
 import cv2
+import numpy as np
 from ultralytics import YOLO
 import zmq
 
 from sources import BBox
 from sources import VideoStream
-from sources import coord_to_steps, coord_to_angle
+from sources import coord_to_angle
 from sources import CarriageController
 from configs import ConnactionsConfig, TrackerConfig
 
@@ -30,10 +31,10 @@ class TrackObject:
     time: float = time.time()
     timeout = 15 # sec
 
-    def update(self, rel, abs, box):
-        self.rel = rel
-        self.abs = abs
-        self.box = box
+    def update(self, rel=None, abs=None, box=None):
+        self.rel = self.rel if rel is None else rel
+        self.abs = self.abs if abs is None else abs
+        self.box = self.box if box is None else box
         self.time = time.time()
 
 
@@ -65,6 +66,8 @@ class Tracker(Process):
 
         # drone information
         self.target = None
+        self.__frames_without_target = 0
+        self.__max_no_target = 25
 
         self.contexts: zmq.Context = None 
         self.subscriber: zmq.Socket = None
@@ -110,16 +113,20 @@ class Tracker(Process):
         position = data["x_position"], data["y_position"]
         self.target = TrackObject((0,0), position, (100, 100, 50, 50))
         return self.target
-        
-    def update_target(self) -> BBox:
+
+    def update_target(self) -> TrackObject:
         
         detection_results = self.model.predict(
             self.frame,
+            imgsz=(576, 1024),
             conf=self.t_config.DETECTOR_CONF,
             iou=self.t_config.DETECTOR_IOU,
             device="cuda:0"
         )
         
+        if len(detection_results[0]) == 0:
+            self.__frames_without_target += 1
+
         max_area = 0
         
         for result in detection_results[0]:    
@@ -130,6 +137,7 @@ class Tracker(Process):
             obj_area = w * h
 
             if obj_area >= max_area:
+                self.__frames_without_target = 0
                 max_area = obj_area
 
                 rel_coord = self.calc_position(x, y)
@@ -140,12 +148,12 @@ class Tracker(Process):
                     self.target = TrackObject(
                         rel=rel_coord,
                         abs=abs_coord,
-                        box=result.boxes.xyxy[0]
+                        box=result.boxes.xywh[0]
                     )
                 else:
-                    self.target.update(rel_coord, abs_coord, result.boxes.xyxy[0])
-
-        if self.target is not None and time.time() - self.target.time > self.target.timeout: 
+                    self.target.update(rel_coord, abs_coord, result.boxes.xywh[0])
+        
+        if self.__frames_without_target == self.__max_no_target:
             self.target = None
 
         return self.target
@@ -158,8 +166,8 @@ class Tracker(Process):
         height = self.t_config.HEIGHT_FRAME
         vert = self.t_config.VERTIC_ANGLE
 
-        x_pos = int(coord_to_angle(x, width, hor))
-        y_pos = -1 * int(coord_to_angle(y, height, vert)) # -1 is reverce. Need to engine coordinates 
+        x_pos = float(1 * coord_to_angle(x, width, hor))
+        y_pos = float(-1 * coord_to_angle(y, height, vert)) # -1 is reverce. Need to engine coordinates 
 
         logger.debug(f"Position calculated: X={x_pos}, Y={y_pos}")
 
@@ -175,38 +183,45 @@ class Tracker(Process):
             logger.info("Starting carriage tracker...")
             while self.is_running:
                 
-                while self.target is None:
-                    self.init_target()
-
+                self.init_target()
+                    
                 if self.target is not None:
                     self.controller.move_to_absolute(*self.target.abs)
 
                 fire = False
-                while True:
+                while self.target is not None:
                     self.frame = stream.read()
+                    
 
                     if self.frame is None:
                         logger.warning("No frame received")
                         continue
-                    
+
                     self.update_target()
-                    
+                    print(self.target)
                     if self.target is not None:
-                        print(self.target.rel)
-                        self.controller.move_relative(*self.target.rel)
+                        part = 4
+                        part_move = self.target.rel[0] / part, self.target.rel[1] / part
+                        self.controller.move_relative(*part_move)
+
+                        # center = self.target.box[:2]
+                        # stop_center = np.array(self.stop_area[:2])
+                        # distance = np.linalg.norm(center - stop_center)
+
+                        self.target.update(rel=(0, 0))
 
                         # TODO rewrite this
                         # trying to continuous movement or synchrone detection method (by Petr)
    
 
-                        if self.target.box[:2] in self.stop_area and not fire:
-                            self.controller.fire("fire")
-                            fire = True
-                        elif self.target.box[:2] not in self.stop_area and fire:
-                            self.controller.fire("stop") 
-                            fire = False 
+                        # if self.target.box[:2] in self.stop_area and not fire:
+                        #     self.controller.fire("fire")
+                        #     fire = True
+                        # elif self.target.box[:2] not in self.stop_area and fire:
+                        #     self.controller.fire("stop") 
+                        #     fire = False 
                         
-                        while not self.controller.command_executed:
+                        while not self.controller.uart.exec_status():
                             print('Waiting for command execution')
                             time.sleep(0.002)
 
@@ -214,8 +229,8 @@ class Tracker(Process):
             logger.info("Tracking interrupted by user")
             self.is_running = False
             
-        except Exception as e:
-            logger.error(f"Unexpected error in tracking loop: {e}")
+        # except Exception as e:
+        #     logger.error(f"Unexpected error in tracking loop: {e}")
         finally:
             logger.info("Cleaning up...")
             self.controller.fire("stop")

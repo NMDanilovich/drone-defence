@@ -11,14 +11,29 @@ from starlette.responses import StreamingResponse
 app = FastAPI()
 current_dir = os.path.dirname(os.path.abspath(__file__))
 
-from app.camera_controll.tracker import Tracker
+from app.camera_controll.tracker import Tracker, FRAME
+from app.camera_controll.overview import Overview
 from app.camera_controll.configs import ConnactionsConfig
 templates = Jinja2Templates(directory=os.path.join(current_dir, "templates"))
-connactions = ConnactionsConfig()
-login = connactions.T_CAMERA_1["login"]
-password = connactions.T_CAMERA_1["password"]
-ip = connactions.T_CAMERA_1["ip"]
-port = connactions.T_CAMERA_1["port"]
+config = ConnactionsConfig()
+
+logins = [config.data[camera]["login"] for camera in config.data if camera.startswith("OV")]
+passwords = [config.data[camera]["password"] for camera in config.data if camera.startswith("OV")]
+cameras_ips = [config.data[camera]["ip"] for camera in config.data if camera.startswith("OV")]
+cameras_ports = [config.data[camera]["port"] for camera in config.data if camera.startswith("OV")]
+
+overview = Overview(
+    logins=logins, 
+    passwords=passwords, 
+    cameras_ips=cameras_ips, 
+    cameras_ports=cameras_ports, 
+)
+overview.start()
+
+login = config.T_CAMERA_1["login"]
+password = config.T_CAMERA_1["password"]
+ip = config.T_CAMERA_1["ip"]
+port = config.T_CAMERA_1["port"]
 
 tracker = Tracker(
     login=login,
@@ -26,6 +41,7 @@ tracker = Tracker(
     camera_ip=ip,
     camera_port=port,
 )
+
 tracker.start()
 
 
@@ -36,8 +52,9 @@ async def read_root(request: Request):
 
 def gen_frames():
     while True:
-        if tracker.frame is not None:
-            _, buffer = cv2.imencode('.jpg', tracker.frame)
+        print(FRAME)
+        if FRAME is not None:
+            _, buffer = cv2.imencode('.jpg', FRAME)
             frame = buffer.tobytes()
             yield (b'--frame\r\n'
                    b'Content-Type: image/jpeg\r\n\r\n' + frame + b'\r\n')
@@ -50,4 +67,4 @@ def video_feed():
 
 
 if __name__ == "__main__":
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    uvicorn.run(app, host="127.0.0.1", port=8085)

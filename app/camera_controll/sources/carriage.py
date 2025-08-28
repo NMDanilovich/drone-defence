@@ -129,24 +129,38 @@ class CarriageController:
         else: 
             return False
     
+    @staticmethod
+    def str_to_dict(info:str, start:str = "") -> dict:
+        temp_dict = {}
+        if info.startswith(start):
+            info = info.replace(start, "").split()
+            
+            for msg in info:
+                key, value = msg.split(":")
+                temp_dict[key] = value
+
+        return temp_dict
+
+
     def update_info(self) -> dict:
         """Recive the status information from controller and return dict (update the self.contr_info variable). 
         """
         temp_info = self.uart.get_info()
         temp_info = temp_info[-1]
+        start = "STATUS"
 
-        if temp_info.startswith("STATUS"):
-            temp_info = temp_info.replace("STATUS", "").split()
-            temp_dict = {}
-            for msg in temp_info:
-                key, value = msg.split(":")
-                temp_dict[key] = value
-
-            self.contr_info = temp_dict
-        else:
-            self.contr_info = {}
+        self.contr_info = self.str_to_dict(temp_info, start)
 
         return self.contr_info
+
+    def last_move_info(self):
+        temp_info = self.uart.results()
+        temp_info = temp_info[-1]
+
+        start = "MOVED"
+
+        return self.str_to_dict(temp_info, start)
+
 
     def get_position(self):
         """

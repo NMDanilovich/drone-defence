@@ -10,7 +10,6 @@ from sources import descriptor
 from sources import coord_to_angle
 from configs import ConnactionsConfig, OverviewConfig, CalibrationConfig
 
-BUFF_SIZE = 15_000
 
 class Overview(Process):
     """

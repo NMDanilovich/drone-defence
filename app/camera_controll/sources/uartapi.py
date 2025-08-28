@@ -74,6 +74,17 @@ class Uart:
     
     def exec_status(self):
         return self.__executed
+    
+    def results(self):
+        """Movement results. If executed status is False, return None
+
+        Returns:
+            list: Last result or None
+        """
+        if self.__executed:
+            return self.__results
+        else:
+            return None 
 
     def get_info(self):
         """Getting controller information

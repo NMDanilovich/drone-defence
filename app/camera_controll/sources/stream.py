@@ -47,7 +47,7 @@ class VideoStream:
             ret, frame = self.cap.read()
             if not ret:
                 print(f"Error: Failed to read frame from camera {self.stream_path}")
-                self.is_running = True
+                self.is_running = False
                 break
             
             self.frame = frame

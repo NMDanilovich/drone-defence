@@ -47,7 +47,7 @@ class CarriageController:
         self.min_x_angle = self.config.MIN_X_COORD
         self.max_y_angle = self.config.MAX_Y_COORD
         self.min_y_angle = self.config.MIN_Y_COORD
-        
+    
         # UART communication
         self.uart = Uart(self.config.SERIAL_PORT, baudrate=self.config.BAUDRATE, is_blocking=is_blocking)
         
@@ -128,7 +128,7 @@ class CarriageController:
             return True
         else: 
             return False
-    
+
     def update_info(self) -> dict:
         """Recive the status information from controller and return dict (update the self.contr_info variable). 
         """

@@ -1,13 +1,13 @@
 import time
 import logging
-from multiprocessing import Process, shared_memory
+from multiprocessing import Process
 
 from ultralytics import YOLO
-import json
+import zmq
 
 from sources import VideoStream
 from sources import descriptor
-from sources import coord_to_steps, coord_to_angle
+from sources import coord_to_angle
 from configs import ConnactionsConfig, OverviewConfig, CalibrationConfig
 
 BUFF_SIZE = 15_000
@@ -64,14 +64,23 @@ class Overview(Process):
             self.streams_path.append(template.format(login, password, ip, port))
 
         self.model = YOLO(self.ov_config.MODEL_PATH, task="detect")
+        self.timeout = self.ov_config.TIMEOUT
 
-        self.shared_memory = shared_memory.SharedMemory(
-            name="object_data",
-            create=True, 
-            size=BUFF_SIZE
-        )
+        self.context: zmq.Context = None
+        self.socket: zmq.Socket = None
 
         self.running = True
+
+    def _init_connaction(self):
+        """Initialization socket for processes connaction.
+        """
+
+        self.context = zmq.Context.instance()
+        self.socket = self.context.socket(zmq.PUB)
+        self.socket.setsockopt(zmq.SNDHWM, 10)
+        self.socket.setsockopt(zmq.RCVHWM, 10)
+        self.socket.bind(f"tcp://127.0.0.1:8000")
+        logging.info("Initalization Publisher socket")
 
     def get_nearest_object(self, frames, detection_results, class_id:int) -> dict:
         """
@@ -135,15 +144,12 @@ class Overview(Process):
     def cleanup(self):
         """Cleans up shared memory resources to prevent memory leaks."""
         try:
-            self.shared_memory.close()
-            self.shared_memory.unlink()
-        except FileNotFoundError:
-            logging.info(f"Shared memory was already unlinked.")
+            self.context.destroy()
         except Exception as e:
             logging.error(f"Error during sender cleanup: {e}")
 
         finally:
-            self.shared_memory = None
+            self.context = None
     
     def send_object_info(self, object_info: dict) -> None:
         """
@@ -178,8 +184,8 @@ class Overview(Process):
             height = self.ov_config.HEIGHT_FRAME
             vert = self.ov_config.VERTIC_ANGLE
 
-            x_position = int(x_calib + coord_to_steps(x, width, hor)) # steps
-            y_position = int(y_calib - coord_to_angle(y, height, vert)) # angles
+            x_position = float(x_calib + coord_to_angle(x, width, hor)) # angles
+            y_position = float(y_calib - coord_to_angle(y, height, vert)) # angles
 
             message = {
                 "object_descriptor": object_descriptor, 
@@ -187,14 +193,7 @@ class Overview(Process):
                 "y_position": y_position
             }
 
-            json_message = json.dumps(message)
-            json_bytes = json_message.encode('utf-8')
-
-            # clear tail buffer
-            self.shared_memory.buf[:] = b"\x00" * BUFF_SIZE
-
-            # json information to buffer
-            self.shared_memory.buf[:len(json_bytes)] = json_bytes
+            self.socket.send_json(message)
 
         except Exception as err:
             print("Send object error:", err)
@@ -203,6 +202,7 @@ class Overview(Process):
     def run(self):
         logging.info("Intialization of streams.")
         streams = [VideoStream(path) for path in self.streams_path]
+        self._init_connaction()
 
         try:
             while self.running:
@@ -222,6 +222,7 @@ class Overview(Process):
                     for frame in frames:
                         result = self.model.predict(
                             frame, 
+                            imgsz=(576, 1024),
                             conf=self.ov_config.DETECTOR_CONF,
                             iou=self.ov_config.DETECTOR_IOU,
                             )
@@ -240,7 +241,7 @@ class Overview(Process):
                 if nearest_object["object"] is not None:
                     self.send_object_info(nearest_object)
 
-                time.sleep(2)
+                time.sleep(self.timeout)
                 print("Total time:", time.time() - start)
 
         finally:

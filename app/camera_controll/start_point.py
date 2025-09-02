@@ -21,11 +21,10 @@ def main():
     overview.start()
     
     time.sleep(3)
-    connactions = ConnactionsConfig()
-    login = connactions.T_CAMERA_1["login"]
-    password = connactions.T_CAMERA_1["password"]
-    ip = connactions.T_CAMERA_1["ip"]
-    port = connactions.T_CAMERA_1["port"]
+    login = config.T_CAMERA_1["login"]
+    password = config.T_CAMERA_1["password"]
+    ip = config.T_CAMERA_1["ip"]
+    port = config.T_CAMERA_1["port"]
 
     tracker = Tracker(
         login=login,

@@ -28,7 +28,7 @@ class Uart:
             baudrate=baudrate,
             parity=serial.PARITY_NONE,
             stopbits=serial.STOPBITS_ONE,
-            timeout=None
+            timeout=1
         )
 
         self.is_blocking = is_blocking
@@ -139,11 +139,10 @@ def main(x_degrees:float=0, y_degrees:float=0):
     uart = Uart(is_blocking=True)
     
     # print(uart.get_info())
-    uart.fire_control('fire')
-    uart.send_relative(x_degrees, y_degrees)
-    uart.get_info()
-    uart.fire_control('stop')
-    uart.get_info()
+    for i in range(20):
+        uart.send_relative(x_degrees, y_degrees)
+        time.sleep(0.04)
+    
     #uart.zero_x_coordinates()
     #uart.send_absolute(x_degrees, y_degrees)
 

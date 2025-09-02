@@ -101,6 +101,13 @@ class TrackerConfig(BaseConfig):
             section_name="tracking"
         )
 
+class AICoreConfig(BaseConfig):
+    def __init__(self, path:str=None):
+        super().__init__(
+            path=Path(__file__).parent.joinpath("tracking.conf") if path is None else path, 
+            section_name="tracking"
+        )
+
 class ConnactionsConfig(BaseConfig):
     def __init__(self, path:str=None):
         super().__init__(
@@ -118,4 +125,4 @@ class CalibrationConfig(BaseConfig):
 
         self.ALL = list(self.data[self.section_name].values())
 
-__all__ = (CarriageConfig, OverviewConfig, TrackerConfig, ConnactionsConfig)
+__all__ = (CarriageConfig, OverviewConfig, TrackerConfig, ConnactionsConfig, AICoreConfig)

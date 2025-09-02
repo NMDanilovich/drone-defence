@@ -32,52 +32,130 @@ class Uart:
         )
 
         self.is_blocking = is_blocking
-
-    def send_coordinates(self, x_steps, y_angle):
-        """Send coordinates on Arduino
-
-        Args:
-            x_steps (int): Number of steps of the yaw axis stepper motor
-            y_angle (int): Degrees of the pithc axis
+        self.__executed = True
+        self.__results = []
         
-        Examples:
-        >>> uart = Uart()
-        >>> x_step = 1000
-        >>> y_degrees = 45
-        >>> uart.send_coordinates(x_step, y_degrees)
+        @threaded(is_blocking=is_blocking)
+        def __sender(command:str, end_marker:str=None):
+            """Hiden sender.
+            Args:
+                command (str): command for sending to uart
+                end_marker (str): marker of end recieve message. If None, will be received the one message. Default None.
+            """
+            self.__results = []
+            self.__executed = False
+
+            try:
+                self.port.write(command.encode())
+
+                time.sleep(0.002)
+
+                while True:
+                    response = self.port.readline().decode().strip()
+
+                    if response == "":
+                        logger.warning("None controller answer.")
+                        self.__executed = True
+                        break
+                    else:
+                        logger.info("Controller answer: %s", response)
+                        self.__results.append(response)
+
+                    if end_marker is None or end_marker in response:
+                        self.__executed = True
+                        break
+                        
+            except Exception as error:
+                logger.error("Sender: %s", error)
+                
+            return self.__results
+        
+        self.sender = __sender
+    
+    def exec_status(self):
+        return self.__executed
+
+    def get_info(self):
+        """Getting controller information
         """
 
-        @threaded(is_blocking=self.is_blocking)
-        def sender():
-            try:
-                command = f"X{x_steps} Y{y_angle}\n"
-                print(command)
-                self.port.write(command.encode())
-                
-                # Ждем подтверждения
-                response = self.port.readline().decode().strip()
-                logger.info("Arduino answer: %s", response)
-                # time.sleep(0.1)
-            except Exception as error:
-                logger.error("SenderError: %s", error)
+        command = "STATUS\n"
+        end_marker = "FIRING"
 
-        return sender()
+        if self.is_blocking:
+            return self.sender(command, end_marker)
+        else:
+            self.sender(command, end_marker).join()
+            return self.__results
 
-def main(x_steps:int=0, y_degrees:int=0):
+    def zero_x_coordinates(self):
+        """Zeroing X coordinates on the controller
+        """
+
+        command = "ZERO_X\n"
+        
+        return self.sender(command)
+        
+        
+    def send_relative(self, x_angle, y_angle):
+        """Send relative coordinates on controller
+
+        Args:
+            x_angle (float): Degrees of the yaw axis
+            y_angle (float): Degrees of the pithc axis
+        """
+
+        command = f"XR{x_angle} YR{y_angle}\n"
+        end_marker = "TIME"
+            
+        return self.sender(command, end_marker)
+    
+    def send_absolute(self, x_angle, y_angle):
+        """Send absolute coordinates on controller
+
+        Args:
+            x_angle (float): Degrees of the yaw axis
+            y_angle (float): Degrees of the pithc axis
+        """
+
+        command = f"XA{x_angle} YA{y_angle}\n"
+        end_marker = "TIME"
+            
+        return self.sender(command, end_marker)
+
+    def fire_control(self, mode):
+        if mode == "fire":
+            command = "FIRE:ON\n"
+        elif mode == "stop":    
+            command = "FIRE:OFF\n"
+
+        return self.sender(command)
+        
+
+def main(x_degrees:float=0, y_degrees:float=0):
     """Main function for hand testing
     """
     
-    uart = Uart()
+    uart = Uart(is_blocking=True)
+    
+    # print(uart.get_info())
+    for i in range(20):
+        uart.send_relative(x_degrees, y_degrees)
+        time.sleep(0.04)
+    
+    #uart.zero_x_coordinates()
+    #uart.send_absolute(x_degrees, y_degrees)
 
-    uart.send_coordinates(x_steps, y_degrees)
-    time.sleep(0.1)
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--x", type=int)
-    parser.add_argument("--y", type=int)
+    parser.add_argument("--x", type=float, default=0)
+    parser.add_argument("--y", type=float, default=0)
+    parser.add_argument("--on")
+    parser.add_argument("--off")
 
     args = parser.parse_args()
     
+    #main()
     main(args.x, args.y)
 

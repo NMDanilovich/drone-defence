@@ -24,7 +24,7 @@ class CarriageController:
     internally and sends absolute coordinates via UART.
     """
     
-    def __init__(self):
+    def __init__(self, is_blocking=True):
         """
         Initialize the carriage controller.
         
@@ -39,23 +39,29 @@ class CarriageController:
         self.config = CarriageConfig()
 
         # Current absolute position
-        self.current_x_steps = self.config.LAST_X_POSITION # Current absolute X position in steps
+        self.current_x_angle = self.config.LAST_X_POSITION # Current absolute X position in steps
         self.current_y_angle = self.config.LAST_Y_POSITION  # Current absolute Y position in degrees
-        
+
         # Movement limits
-        self.max_x_steps = self.config.MAX_X_COORD
-        self.min_x_steps = self.config.MIN_X_COORD
+        self.max_x_angle = self.config.MAX_X_COORD
+        self.min_x_angle = self.config.MIN_X_COORD
         self.max_y_angle = self.config.MAX_Y_COORD
         self.min_y_angle = self.config.MIN_Y_COORD
     
         # UART communication
-        self.uart = Uart(self.config.SERIAL_PORT, baudrate=self.config.BAUDRATE, is_blocking=False)
+        self.uart = Uart(self.config.SERIAL_PORT, baudrate=self.config.BAUDRATE, is_blocking=is_blocking)
+        
+        # Information (status) from controller
+        self.contr_info: dict
+        self.update_info()
 
         # setup start position
         self.start_x_pos = self.config.START_X_POSITION
         self.start_y_pos = self.config.START_Y_POSITION
+        
+        self.command_executed = False
 
-        logger.info(f"CarriageController initialized - X range: [{self.min_x_steps}, {self.max_x_steps}], "
+        logger.info(f"CarriageController initialized - X range: [{self.min_x_angle}, {self.max_x_angle}], "
                    f"Y range: [{self.min_y_angle}, {self.max_y_angle}]")
 
     def move_to_start(self):
@@ -74,31 +80,28 @@ class CarriageController:
             bool: True if movement was successful, False if limits exceeded
         """
         # Calculate new absolute positions
-        new_x = self.current_x_steps + delta_x
+        new_x = self.current_x_angle + delta_x
         new_y = self.current_y_angle + delta_y
         
         # Check limits
-        if new_x < self.min_x_steps or new_x > self.max_x_steps:
-            logger.warning(f"X movement blocked: {new_x} exceeds limits [{self.min_x_steps}, {self.max_x_steps}]")
-            return False
+        if self.check_limits(new_x, new_y):
+        
+            # Update current position
+            self.current_x_angle = new_x
+            self.current_y_angle = new_y
             
-        if new_y < self.min_y_angle or new_y > self.max_y_angle:
-            logger.warning(f"Y movement blocked: {new_y} exceeds limits [{self.min_y_angle}, {self.max_y_angle}]")
+            # Send absolute coordinates via UART
+            self.uart.send_relative(delta_x, delta_y)
+            self.command_executed = self.uart.exec_status()
+            
+            logger.debug(f"Relative move: delta_x={delta_x}, delta_y={delta_y} -> "
+                        f"absolute: x={self.current_x_angle}, y={self.current_y_angle}")
+            
+            return True
+        else:
             return False
-        
-        # Update current position
-        self.current_x_steps = new_x
-        self.current_y_angle = new_y
-        
-        # Send absolute coordinates via UART
-        self._send_absolute_position()
-        
-        logger.debug(f"Relative move: delta_x={delta_x}, delta_y={delta_y} -> "
-                    f"absolute: x={self.current_x_steps}, y={self.current_y_angle}")
-        
-        return True
     
-    def move_to_absolute(self, x_steps, y_angle):
+    def move_to_absolute(self, x_angle, y_angle):
         """
         Move carriage to absolute position.
         
@@ -110,52 +113,41 @@ class CarriageController:
             bool: True if movement was successful, False if limits exceeded
         """
         # Check limits
-        if x_steps < self.min_x_steps or x_steps > self.max_x_steps:
-            logger.warning(f"Absolute X position {x_steps} exceeds limits [{self.min_x_steps}, {self.max_x_steps}]")
-            return False
+        if self.check_limits(x_angle, y_angle):
+
+            # Update current position
+            self.current_x_angle = x_angle
+            self.current_y_angle = y_angle
             
-        if y_angle < self.min_y_angle or y_angle > self.max_y_angle:
-            logger.warning(f"Absolute Y position {y_angle} exceeds limits [{self.min_y_angle}, {self.max_y_angle}]")
+            # Send absolute coordinates via UART
+            self.uart.send_absolute(self.current_x_angle, self.current_y_angle)
+            self.command_executed = self.uart.exec_status()
+            
+            logger.debug(f"Absolute move to: x={self.current_x_angle}, y={self.current_y_angle}")
+            
+            return True
+        else: 
             return False
-        
-        # Update current position
-        self.current_x_steps = x_steps
-        self.current_y_angle = y_angle
-        
-        # Send absolute coordinates via UART
-        self._send_absolute_position()
-        
-        logger.debug(f"Absolute move to: x={self.current_x_steps}, y={self.current_y_angle}")
-        
-        return True
 
-    @threaded(is_blocking=False)
-    def continues_start(self):
-        self.x_move = 0
-        self.y_move = 0
-        self.continues_moving = True
-        
-        while self.continues_moving:
-            norm = max(self.x_move, self.y_move) * 0.1
-            self.x_move /= norm
-            self.y_move /= norm
+    def update_info(self) -> dict:
+        """Recive the status information from controller and return dict (update the self.contr_info variable). 
+        """
+        temp_info = self.uart.get_info()
+        temp_info = temp_info[-1]
 
-            self.curent_x_steps += self.x_move
-            self.curent_y_angle += self.y_move
+        if temp_info.startswith("STATUS"):
+            temp_info = temp_info.replace("STATUS", "").split()
+            temp_dict = {}
+            for msg in temp_info:
+                key, value = msg.split(":")
+                temp_dict[key] = value
 
-            self._send_absolute_position()
-            time.sleep(self.cont_speed)
+            self.contr_info = temp_dict
+        else:
+            self.contr_info = {}
 
-    def set_cont_moves(self, x_steps, y_angle, speed):
-        if self.continues_moving:
-            self.x_move = x_steps
-            self.y_move = y_angle
-            self.cont_speed = speed
+        return self.contr_info
 
-    def continues_stop(self):
-        self.cont_speed = 0
-        self.continues_moving = False
-    
     def get_position(self):
         """
         Get current absolute position.
@@ -163,27 +155,36 @@ class CarriageController:
         Returns:
             tuple: (x_steps, y_angle)
         """
-        return (self.current_x_steps, self.current_y_angle)
-              
-    def _send_absolute_position(self):
-        """Send current absolute position via UART."""
-        try:
-            self.uart.send_coordinates(self.current_x_steps, self.current_y_angle)
-            logger.debug(f"Sent absolute position: X{self.current_x_steps} Y{self.current_y_angle}")
-        except Exception as e:
-            logger.error(f"Failed to send coordinates via UART: {e}")
 
-    def reset_position(self):
-        """Reset position tracking to (0, 0) without moving."""
-        self.current_x_steps = self.start_x_pos
-        self.current_y_angle = self.start_y_pos
-        self.move_to_absolute(self.start_x_pos, self.start_y_pos)
-        logger.info("Position reset to start")
+        self.update_info()
+
+        if self.contr_info:
+            self.current_x_angle = float(self.contr_info["X"])
+            self.current_y_angle = float(self.contr_info["Y"])
+
+        return (self.current_x_angle, self.current_y_angle)
     
+    def fire(self, mode):
+        self.uart.fire_control(mode)
+              
+    def check_limits(self, new_x, new_y):
+
+        if self.min_x_angle != "None" or self.max_x_angle != "None":
+            if new_x < self.min_x_angle or new_x > self.max_x_angle:
+                logger.warning(f"X movement blocked: {new_x} exceeds limits [{self.min_x_angle}, {self.max_x_angle}]")
+                return False
+            
+        if self.min_y_angle != "None" or self.max_y_angle != "None":  
+            if new_y < self.min_y_angle or new_y > self.max_y_angle:
+                logger.warning(f"Y movement blocked: {new_y} exceeds limits [{self.min_y_angle}, {self.max_y_angle}]")
+                return False
+        
+        return True
+
     def save_position(self):
         """Write the current values of position in config file.:"""
         
-        self.config.LAST_X_POSITION = self.current_x_steps
+        self.config.LAST_X_POSITION = self.current_x_angle
         self.config.LAST_Y_POSITION = self.current_y_angle
         self.config.write()
 
@@ -192,10 +193,10 @@ def main(x_steps:int=0, y_degrees:int=0, start:bool=False):
     """
     
     # Initialize controller
-    controller = CarriageController()
+    controller = CarriageController(True)
 
     # Show initial status
-    print(f"Position: {controller.get_position()}")
+    # print(f"Position: {controller.get_position()}")
     print()
 
     if start:
@@ -203,6 +204,7 @@ def main(x_steps:int=0, y_degrees:int=0, start:bool=False):
     else:
         controller.move_relative(x_steps, y_degrees)
     
+
     controller.save_position()
 
     print(f"New position: {controller.get_position()}")
@@ -210,8 +212,8 @@ def main(x_steps:int=0, y_degrees:int=0, start:bool=False):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--x", type=int, default=0)
-    parser.add_argument("--y", type=int, default=0)
+    parser.add_argument("--x", type=float, default=0)
+    parser.add_argument("--y", type=float, default=0)
     parser.add_argument("--abs", action="store_true")
     parser.add_argument("--start", action="store_true")
 

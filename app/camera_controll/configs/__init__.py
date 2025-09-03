@@ -104,8 +104,8 @@ class TrackerConfig(BaseConfig):
 class AICoreConfig(BaseConfig):
     def __init__(self, path:str=None):
         super().__init__(
-            path=Path(__file__).parent.joinpath("tracking.conf") if path is None else path, 
-            section_name="tracking"
+            path=Path(__file__).parent.joinpath("ai_core.conf") if path is None else path, 
+            section_name="core"
         )
 
 class ConnactionsConfig(BaseConfig):

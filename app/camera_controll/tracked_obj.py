@@ -3,15 +3,15 @@ from dataclasses import dataclass
 
 @dataclass
 class TrackObject:
-    rel: tuple
     abs: tuple
     box: tuple
+    error: tuple = (0, 0)
 
     time: float = time.time()
     timeout = 15 # sec
 
-    def update(self, rel=None, abs=None, box=None):
-        self.rel = self.rel if rel is None else rel
+    def update(self,  abs=None, box=None, error=None):
+        self.error = self.error if error is None else error
         self.abs = self.abs if abs is None else abs
         self.box = self.box if box is None else box
         self.time = time.time()

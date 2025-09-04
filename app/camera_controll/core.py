@@ -27,10 +27,8 @@ class AICore(Process):
         self._track_index = None
 
         self.target = None
-        self._no_target_count = 0
-        self._no_target_limit = 25
-        self._short_duration = 3
-        self._long_duration = 7
+        self._short_duration = 5
+        self._long_duration = 10
 
         self.detector = YOLO(self.ov_config.MODEL_PATH, task="detect")
         self.running = False
@@ -90,7 +88,7 @@ class AICore(Process):
             if camera_results is None:
                 continue
 
-            for result in detection_results[0]:    
+            for result in camera_results:    
                 if result.boxes.cls != self.t_config.DRONE_CLASS_ID:
                     continue
 
@@ -118,6 +116,7 @@ class AICore(Process):
         return x_angles, y_angles
 
     def send_target(self) -> bool:
+
         if self.target is not None:
             message = self.target.__dict__
 
@@ -125,7 +124,6 @@ class AICore(Process):
 
     def reset(self):
         self.target = None
-        self._no_target_count = 0
 
     def overview(self) -> None:
         while self.target is None:
@@ -138,6 +136,7 @@ class AICore(Process):
                     imgsz=(576, 1024),
                     conf=self.ov_config.DETECTOR_CONF,
                     iou=self.ov_config.DETECTOR_IOU,
+                    verbose=False
                     )
                 detection_results.append(result[0])
 
@@ -157,11 +156,13 @@ class AICore(Process):
                 absolute = (abs_x, abs_y)
 
                 # initializate target
-                self.target = TrackObject(absolute, bbox)
-
+                self.target = TrackObject(absolute, bbox.cpu().tolist(), time=time.time())
+                logging.info(f"Init target: {self.target}")
+                
                 self.state = "standby"
                 self.send_target()
             else:
+                logging.info(f"No drone information")
                 time.sleep(self._overview_timout)
 
     def standby(self) -> TrackObject:
@@ -170,7 +171,6 @@ class AICore(Process):
 
         while not tracked:
             if time.time() - standby_time > self._standby_timeout:
-
                 frames = self.get_overview_frames()
                 detection_results = []
                 for frame in frames:
@@ -179,6 +179,7 @@ class AICore(Process):
                         imgsz=(576, 1024),
                         conf=self.ov_config.DETECTOR_CONF,
                         iou=self.ov_config.DETECTOR_IOU,
+                        verbose=False
                         )
                     detection_results.append(result[0])
                 
@@ -200,7 +201,8 @@ class AICore(Process):
                     absolute = (abs_x, abs_y)
 
                     # initializate target
-                    self.target.update(absolute, bbox)
+                    self.target.update(absolute, bbox.cpu().tolist())
+                    logging.info(f"OV. Update target: {self.target}")
 
             else:
 
@@ -220,12 +222,14 @@ class AICore(Process):
 
                     _, bbox = info
                     err_x, err_y = self.get_angles(bbox)
-                    self.target.update(error=(err_x, err_y), box=bbox)
+                    self.target.update(error=(float(err_x), float(err_y)), box=bbox.cpu().tolist())
+                    logging.info(f"T. Update target: {self.target}")
             
             self.send_target()
-            
+
             if time.time() - self.target.time >= self._long_duration:
                 self.state = "overview"
+                self.reset()
                 break
 
 
@@ -247,7 +251,7 @@ class AICore(Process):
                 err_x, err_y = self.get_angles(bbox)
 
                 # update target
-                self.target.update(error=(err_x, err_y), box=bbox)
+                self.target.update(error=(float(err_x), float(err_y)), box=bbox.cpu().tolist())
 
                 self.send_target()
         
@@ -259,15 +263,25 @@ class AICore(Process):
         self._init_cameras()
         self.running = True
         
-        while self.running:
-            logging.info(f"System state: {self.state}")
+        try:
+            while self.running:
+                logging.info(f"System state: {self.state}")
 
-            if self.state == "overview":
-                self.overview()
-            elif self.state == "standby":
-                self.standby()
-            elif self.state == "tracking":
-                self.tracking()
+                if self.state == "overview":
+                    self.overview()
+                elif self.state == "standby":
+                    self.standby()
+                elif self.state == "tracking":
+                    self.tracking()
+        except KeyboardInterrupt:
+            self.running = False
+            logging.exception("Keyboard exit.")
+        
+        finally:
+            self.context.destroy()
+            
+            for camera in self.cameras:
+                camera.stop()
 
 def main():
     core = AICore()

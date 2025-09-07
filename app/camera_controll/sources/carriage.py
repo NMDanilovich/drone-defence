@@ -169,16 +169,26 @@ class CarriageController:
 
         return (self.current_x_angle, self.current_y_angle)
     
-    def get_move_status(self):
-        """Getting movement status. Return True if carriage is moving.
+    def get_move_info(self):
         """
+        Get current absolute position and movement status.
+        
+        Returns:
+            tuple: (status: bool, x_steps: float, y_angle: float)
+        """
+
 
         self.update_info()
 
-        status = self.contr_info["MOVING"] == "YES"
+        if self.contr_info:
+            self.current_x_angle = np.float(self.contr_info["X"])
+            self.current_y_angle = np.float(self.contr_info["Y"])
 
-        return status
-        
+            status = self.contr_info["MOVING"] == "YES"
+
+        return (status, self.current_x_angle, self.current_y_angle)
+
+
     def fire(self, mode):
         self.uart.fire_control(mode)
 

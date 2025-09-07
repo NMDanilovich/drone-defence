@@ -22,7 +22,13 @@ def read_config(path:str) -> dict:
         for key, value in config.items(section):
             try:
                 # Try converting to integer first
-                config_dict[section][key] = float(value) if "." in value else int(value)
+                if "." in value:
+                    config_dict[section][key] = float(value)
+                elif "None" == value:
+                    config_dict[section][key] = None
+                else:
+                    config_dict[section][key] = int(value)
+
             except ValueError:
                 config_dict[section][key] = value
   

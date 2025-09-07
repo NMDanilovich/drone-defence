@@ -10,6 +10,8 @@ import logging
 # sys.path.append(str(CONFIGS))
 # ---------------------------------
 
+import numpy as np
+
 from configs import CarriageConfig
 from .uartapi import Uart, JETSON_SERIAL
 
@@ -66,7 +68,17 @@ class CarriageController:
 
     def move_to_start(self):
         """Moves the carriage platform to the starting position"""
-        self.move_to_absolute(self.start_x_pos, self.start_y_pos)
+        self.get_position()
+
+        if self.current_x_angle > 360 or self.current_y_angle > 360:
+            self.current_x_angle %= 360
+            self.current_y_angle %= 360
+
+        rel_x = self.start_x_pos - self.current_x_angle
+        rel_y = self.start_y_pos - self.current_y_angle
+
+        self.move_relative(rel_x, rel_y)
+        self.uart.zero_x_coordinates()
 
     def move_relative(self, delta_x=0, delta_y=0):
         """
@@ -82,24 +94,20 @@ class CarriageController:
         # Calculate new absolute positions
         new_x = self.current_x_angle + delta_x
         new_y = self.current_y_angle + delta_y
+
+        # Update current position
+        if self.min_x_angle is not None or self.max_x_angle is not None:
+            self.current_x_angle = np.clip(new_x, self.min_x_angle, self.max_x_angle, dtype=np.float)
+        if self.min_y_angle is not None or self.max_y_angle is not None:
+            self.current_y_angle = np.clip(new_y, self.min_y_angle, self.max_y_angle, dtype=np.float)
+            
+        # Send absolute coordinates via UART
+        self.uart.send_relative(delta_x, delta_y)
+        self.command_executed = self.uart.exec_status()
         
-        # Check limits
-        if self.check_limits(new_x, new_y):
-        
-            # Update current position
-            self.current_x_angle = new_x
-            self.current_y_angle = new_y
-            
-            # Send absolute coordinates via UART
-            self.uart.send_relative(delta_x, delta_y)
-            self.command_executed = self.uart.exec_status()
-            
-            logger.debug(f"Relative move: delta_x={delta_x}, delta_y={delta_y} -> "
-                        f"absolute: x={self.current_x_angle}, y={self.current_y_angle}")
-            
-            return True
-        else:
-            return False
+        logger.debug(f"Relative move: delta_x={delta_x}, delta_y={delta_y} -> "
+                    f"absolute: x={self.current_x_angle}, y={self.current_y_angle}")
+
     
     def move_to_absolute(self, x_angle, y_angle):
         """
@@ -112,22 +120,19 @@ class CarriageController:
         Returns:
             bool: True if movement was successful, False if limits exceeded
         """
-        # Check limits
-        if self.check_limits(x_angle, y_angle):
 
-            # Update current position
-            self.current_x_angle = x_angle
-            self.current_y_angle = y_angle
-            
-            # Send absolute coordinates via UART
-            self.uart.send_absolute(self.current_x_angle, self.current_y_angle)
-            self.command_executed = self.uart.exec_status()
-            
-            logger.debug(f"Absolute move to: x={self.current_x_angle}, y={self.current_y_angle}")
-            
-            return True
-        else: 
-            return False
+        # Update current position
+        if self.min_x_angle is not None or self.max_x_angle is not None:
+            self.current_x_angle = np.clip(x_angle, self.min_x_angle, self.max_x_angle, dtype=np.float)
+        if self.min_y_angle is not None or self.max_y_angle is not None:
+            self.current_y_angle = np.clip(y_angle, self.min_y_angle, self.max_y_angle, dtype=np.float)
+
+        # Send absolute coordinates via UART
+        self.uart.send_absolute(self.current_x_angle, self.current_y_angle)
+        self.command_executed = self.uart.exec_status()
+        
+        logger.debug(f"Absolute move to: x={self.current_x_angle}, y={self.current_y_angle}")
+        
 
     def update_info(self) -> dict:
         """Recive the status information from controller and return dict (update the self.contr_info variable). 
@@ -159,27 +164,23 @@ class CarriageController:
         self.update_info()
 
         if self.contr_info:
-            self.current_x_angle = float(self.contr_info["X"])
-            self.current_y_angle = float(self.contr_info["Y"])
+            self.current_x_angle = np.float(self.contr_info["X"])
+            self.current_y_angle = np.float(self.contr_info["Y"])
 
         return (self.current_x_angle, self.current_y_angle)
     
+    def get_move_status(self):
+        """Getting movement status. Return True if carriage is moving.
+        """
+
+        self.update_info()
+
+        status = self.contr_info["MOVING"] == "YES"
+
+        return status
+        
     def fire(self, mode):
         self.uart.fire_control(mode)
-              
-    def check_limits(self, new_x, new_y):
-
-        if self.min_x_angle != "None" or self.max_x_angle != "None":
-            if new_x < self.min_x_angle or new_x > self.max_x_angle:
-                logger.warning(f"X movement blocked: {new_x} exceeds limits [{self.min_x_angle}, {self.max_x_angle}]")
-                return False
-            
-        if self.min_y_angle != "None" or self.max_y_angle != "None":  
-            if new_y < self.min_y_angle or new_y > self.max_y_angle:
-                logger.warning(f"Y movement blocked: {new_y} exceeds limits [{self.min_y_angle}, {self.max_y_angle}]")
-                return False
-        
-        return True
 
     def save_position(self):
         """Write the current values of position in config file.:"""

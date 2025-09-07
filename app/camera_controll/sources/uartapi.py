@@ -1,10 +1,9 @@
 import logging
 import time
 import argparse
+from threading import Thread
 
 import serial
-
-from .threads_utils import threaded
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -35,42 +34,39 @@ class Uart:
         self.__executed = True
         self.__results = []
         
-        @threaded(is_blocking=is_blocking)
-        def __sender(command:str, end_marker:str=None):
-            """Hiden sender.
-            Args:
-                command (str): command for sending to uart
-                end_marker (str): marker of end recieve message. If None, will be received the one message. Default None.
-            """
-            self.__results = []
-            self.__executed = False
+    def __sender(self, command:str, end_marker:str=None):
+        """Hiden sender.
+        Args:
+            command (str): command for sending to uart
+            end_marker (str): marker of end recieve message. If None, will be received the one message. Default None.
+        """
+        self.__results = []
+        self.__executed = False
 
-            try:
-                self.port.write(command.encode())
+        try:
+            self.port.write(command.encode())
 
-                time.sleep(0.002)
+            time.sleep(0.002)
 
-                while True:
-                    response = self.port.readline().decode().strip()
+            while True:
+                response = self.port.readline().decode().strip()
 
-                    if response == "":
-                        logger.warning("None controller answer.")
-                        self.__executed = True
-                        break
-                    else:
-                        logger.info("Controller answer: %s", response)
-                        self.__results.append(response)
+                if response == "":
+                    logger.warning("None controller answer.")
+                    self.__executed = True
+                    break
+                else:
+                    logger.info("Controller answer: %s", response)
+                    self.__results.append(response)
 
-                    if end_marker is None or end_marker in response:
-                        self.__executed = True
-                        break
-                        
-            except Exception as error:
-                logger.error("Sender: %s", error)
-                
-            return self.__results
-        
-        self.sender = __sender
+                if end_marker is None or end_marker in response:
+                    self.__executed = True
+                    break
+                    
+        except Exception as error:
+            logger.error("Sender: %s", error)
+            
+        return self.__results
     
     def exec_status(self):
         return self.__executed
@@ -82,11 +78,7 @@ class Uart:
         command = "STATUS\n"
         end_marker = "FIRING"
 
-        if self.is_blocking:
-            return self.sender(command, end_marker)
-        else:
-            self.sender(command, end_marker).join()
-            return self.__results
+        return self.__sender(command, end_marker)
 
     def zero_x_coordinates(self):
         """Zeroing X coordinates on the controller
@@ -94,7 +86,7 @@ class Uart:
 
         command = "ZERO_X\n"
         
-        return self.sender(command)
+        return self.__sender(command)
         
         
     def send_relative(self, x_angle, y_angle):
@@ -107,8 +99,8 @@ class Uart:
 
         command = f"XR{x_angle} YR{y_angle}\n"
         end_marker = "TIME"
-            
-        return self.sender(command, end_marker)
+        thread = Thread(target=self.__sender, args=(command, end_marker), daemon=True)
+        thread.start()
     
     def send_absolute(self, x_angle, y_angle):
         """Send absolute coordinates on controller
@@ -121,7 +113,8 @@ class Uart:
         command = f"XA{x_angle} YA{y_angle}\n"
         end_marker = "TIME"
             
-        return self.sender(command, end_marker)
+        thread = Thread(target=self.__sender, args=(command, end_marker), daemon=True)
+        thread.start()
 
     def fire_control(self, mode):
         if mode == "fire":
@@ -129,7 +122,8 @@ class Uart:
         elif mode == "stop":    
             command = "FIRE:OFF\n"
 
-        return self.sender(command)
+        thread = Thread(target=self.__sender, args=(command), daemon=True)
+        thread.start()
         
 
 def main(x_degrees:float=0, y_degrees:float=0):
@@ -139,10 +133,11 @@ def main(x_degrees:float=0, y_degrees:float=0):
     uart = Uart(is_blocking=True)
     
     # print(uart.get_info())
+    uart.send_relative(1200, 0)
     for i in range(20):
-        uart.send_relative(x_degrees, y_degrees)
-        time.sleep(0.04)
-    
+        time.sleep(0.2)
+        print(uart.get_info())
+    print(uart.get_info())
     #uart.zero_x_coordinates()
     #uart.send_absolute(x_degrees, y_degrees)
 

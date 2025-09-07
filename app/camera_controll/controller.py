@@ -22,8 +22,13 @@ class PID:
         self._prev_error = 0.0
         self._prev_time = time.time()
         
-    def update(self, measured_value: float, measurent) -> float:
-        current_time = time.time()
+    def update(self, measured_value: float, measurement_time: float = None) -> float:
+
+        if measurement_time is not None:
+            current_time = measurement_time
+        else:
+            current_time = time.time()
+
         dt = current_time - self._prev_time
         if dt <= 0:
             return 0.0
@@ -91,23 +96,23 @@ class TrackingSystem:
         
         try:
             while self.running:
-                absolute, bbox, error, time = self.get_object_info()
-                
-                self.x_pid.set_setpoint(absolute[0])
-                self.y_pid.set_setpoint(absolute[1])
-
-                if error[0] is not None:
+                moving, position = self.controller.get_move_info()
+                absolute, bbox, error, det_time = self.get_object_info()
+            
+                if error[0] is not None and not moving:
                     x_error = error[0]
                     y_error = error[1]
                 
-                    x_output = self.x_pid.update(x_error)
-                    y_output = self.y_pid.update(y_error)
+                    x_output = self.x_pid.update(x_error, det_time)
+                    y_output = self.y_pid.update(y_error, det_time)
 
                     print(f"x: {x_error} -> {x_output}")
                     print(f"y: {y_error} -> {y_output}")
 
                     self.controller.move_relative(x_output, y_output)
                 else:
+                    self.controller.move_to_absolute(*absolute)
+
                     self.x_pid.reset()
                     self.y_pid.reset()
 

@@ -201,7 +201,7 @@ class AICore(Process):
                     absolute = (abs_x, abs_y)
 
                     # initializate target
-                    self.target.update(absolute, bbox.cpu().tolist())
+                    self.target.update(absolute, bbox.cpu().tolist(), error=(None, None))
                     logging.info(f"OV. Update target: {self.target}")
 
             else:

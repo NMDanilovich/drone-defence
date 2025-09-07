@@ -22,7 +22,7 @@ def interactive_mode():
     while True:
         x_steps = 0
         y_degrees = 0
-        speed = 50
+        speed = 5
         com = input("A/D/W/S: ").lower()
         if com == "a":
             x_steps += speed

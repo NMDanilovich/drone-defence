@@ -5,7 +5,7 @@ from dataclasses import dataclass
 class TrackObject:
     abs: tuple
     box: tuple
-    error: tuple = (0, 0)
+    error: tuple = (None, None)
 
     time: float = time.time()
     timeout = 15 # sec

@@ -7,7 +7,7 @@ import numpy as np
 import zmq
 
 from sources import VideoStream, coord_to_angle
-from tracked_obj import TrackObject
+from app.camera_controll.sources.tracked_obj import TrackObject
 from configs import OverviewConfig, TrackerConfig, ConnactionsConfig, CalibrationConfig
 
 class AICore(Process):
@@ -201,7 +201,7 @@ class AICore(Process):
                     absolute = (abs_x, abs_y)
 
                     # initializate target
-                    self.target.update(absolute, bbox.cpu().tolist(), error=(None, None))
+                    self.target.update(absolute, bbox.cpu().tolist(), tracked=False, error=(None, None))
                     logging.info(f"OV. Update target: {self.target}")
 
             else:
@@ -222,7 +222,7 @@ class AICore(Process):
 
                     _, bbox = info
                     err_x, err_y = self.get_angles(bbox)
-                    self.target.update(error=(float(err_x), float(err_y)), box=bbox.cpu().tolist())
+                    self.target.update(error=(float(err_x), float(err_y)), tracked=True, box=bbox.cpu().tolist())
                     logging.info(f"T. Update target: {self.target}")
             
             self.send_target()

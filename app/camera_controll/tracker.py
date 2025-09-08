@@ -33,7 +33,7 @@ class PID:
         if dt <= 0:
             return 0.0
             
-        error = self.setpoint - measured_value
+        error = self.setpoint + measured_value
         
         p_term = self.kp * error
         
@@ -64,10 +64,11 @@ class TrackingSystem:
     def __init__(self):
         self.controller = CarriageController()
 
-        self.x_pid = PID(kp=0.1, ki=0.01, kd=0.05)
+        self.x_pid = PID(kp=0.12, ki=0.01, kd=0.05)
         self.y_pid = PID(kp=0.1, ki=0.01, kd=0.05)
 
         self.running = False
+        self._last_data = None # last data message from ai core 
 
     def _init_connaction(self, filter_msg:str=""):
         """Setting up connection to proxy
@@ -82,12 +83,21 @@ class TrackingSystem:
 
     def get_object_info(self):
         data = self.subscriber.recv_json()
+
+        tracked = data["tracked"]
         absolute = data["abs"]
         bbox = data["box"]
         error = data["error"]
         time = data["time"]
 
-        return absolute, bbox, error, time
+        if data == self._last_data:
+            new_msg = False
+        else:
+            new_msg = True
+
+        self._last_data = data
+
+        return new_msg, tracked, absolute, bbox, error, time
 
     def run(self):
         logging.info("Controller initialization...")
@@ -96,25 +106,27 @@ class TrackingSystem:
         
         try:
             while self.running:
-                moving, position = self.controller.get_move_info()
-                absolute, bbox, error, det_time = self.get_object_info()
-            
-                if error[0] is not None and not moving:
-                    x_error = error[0]
-                    y_error = error[1]
+                # moving, *position = self.controller.get_move_info()
+                new_message, tracked, absolute, bbox, error, det_time = self.get_object_info()
                 
-                    x_output = self.x_pid.update(x_error, det_time)
-                    y_output = self.y_pid.update(y_error, det_time)
+                if new_message:
+                    print(tracked)
+                    if tracked:
+                        x_error = error[0]
+                        y_error = -1 * error[1]
+                    
+                        x_output = self.x_pid.update(x_error, det_time)
+                        y_output = self.y_pid.update(y_error, det_time)
 
-                    print(f"x: {x_error} -> {x_output}")
-                    print(f"y: {y_error} -> {y_output}")
+                        print(f"x: {x_error} -> {x_output}")
+                        print(f"y: {y_error} -> {y_output}")
 
-                    self.controller.move_relative(x_output, y_output)
-                else:
-                    self.controller.move_to_absolute(*absolute)
+                        self.controller.move_relative(x_output, y_output)
+                    else:
+                        self.controller.move_to_absolute(*absolute)
 
-                    self.x_pid.reset()
-                    self.y_pid.reset()
+                        self.x_pid.reset()
+                        self.y_pid.reset()
 
 
         except KeyboardInterrupt:

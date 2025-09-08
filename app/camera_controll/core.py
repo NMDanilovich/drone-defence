@@ -7,7 +7,7 @@ import numpy as np
 import zmq
 
 from sources import VideoStream, coord_to_angle
-from app.camera_controll.sources.tracked_obj import TrackObject
+from sources.tracked_obj import TrackObject
 from configs import OverviewConfig, TrackerConfig, ConnactionsConfig, CalibrationConfig
 
 class AICore(Process):

@@ -1,4 +1,5 @@
 import time
+import argparse
 from typing import Tuple
 import logging
 
@@ -99,7 +100,7 @@ class TrackingSystem:
 
         return new_msg, tracked, absolute, bbox, error, time
 
-    def run(self):
+    def main(self):
         logging.info("Controller initialization...")
         self._init_connaction()
         self.running = True
@@ -121,7 +122,7 @@ class TrackingSystem:
                         print(f"x: {x_error} -> {x_output}")
                         print(f"y: {y_error} -> {y_output}")
 
-                        self.controller.move_relative(x_output, y_output)
+                        self.controller.move_relative(x_output, 0)
                     else:
                         self.controller.move_to_absolute(*absolute)
 
@@ -137,4 +138,15 @@ class TrackingSystem:
             self.context.destroy()
 
 if __name__ == "__main__":
-    TrackingSystem().run()
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--start", action="store_true")
+    parser.add_argument("--debug", action="store_true")
+
+    args = parser.parse_args()
+
+    if args.start:
+        from core import AICore
+        ai_core = AICore()
+        ai_core.start()
+
+    TrackingSystem().main()

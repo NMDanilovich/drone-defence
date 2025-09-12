@@ -1,12 +1,17 @@
 import time
+import datetime
 import argparse
 from typing import Tuple
 import logging
 
 import numpy as np
 import zmq
+from matplotlib import pyplot as plt
 
 from sources import CarriageController
+
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.DEBUG)
 
 class PID:
     def __init__(self, kp: float, ki: float, kd: float, 
@@ -65,8 +70,9 @@ class TrackingSystem:
     def __init__(self):
         self.controller = CarriageController()
 
-        self.x_pid = PID(kp=0.12, ki=0.01, kd=0.05)
-        self.y_pid = PID(kp=0.1, ki=0.01, kd=0.05)
+        # self.x_pid = PID(kp=0.036, ki=0.0010, kd=0.0163)
+        self.x_pid = PID(kp=0.056, ki=0.0015, kd=0.0017)
+        self.y_pid = PID(kp=0.1, ki=0.00, kd=-0.0000)
 
         self.running = False
         self._last_data = None # last data message from ai core 
@@ -104,37 +110,61 @@ class TrackingSystem:
         logging.info("Controller initialization...")
         self._init_connaction()
         self.running = True
-        
+        plt.plot()
+
+        y_errors = []
+        x_errors = []
+        y_signals = []
+        x_signals = []
+        num_tracked = 0
+
         try:
             while self.running:
                 # moving, *position = self.controller.get_move_info()
                 new_message, tracked, absolute, bbox, error, det_time = self.get_object_info()
                 
                 if new_message:
-                    print(tracked)
                     if tracked:
                         x_error = error[0]
                         y_error = -1 * error[1]
-                    
+
+                        y_errors.append(y_error)
+                        x_errors.append(y_error)
+
                         x_output = self.x_pid.update(x_error, det_time)
                         y_output = self.y_pid.update(y_error, det_time)
 
-                        print(f"x: {x_error} -> {x_output}")
-                        print(f"y: {y_error} -> {y_output}")
+                        logger.debug(f"x: {x_error} -> {x_output}")
+                        logger.debug(f"y: {y_error} -> {y_output}")
+                        
+                        dt_object = datetime.datetime.fromtimestamp(det_time)
+                        logger.debug(f"Tracked time: {dt_object} Current time: {datetime.datetime.now()}")
 
-                        self.controller.move_relative(x_output, 0)
+                        y_signals.append(x_output)
+                        x_signals.append(y_output)
+                        num_tracked += 1
+
+                        self.controller.move_relative(x_output, y_output)
                     else:
                         self.controller.move_to_absolute(*absolute)
 
                         self.x_pid.reset()
                         self.y_pid.reset()
-
+            
+                    # if num_tracked == 500:
+                    #     break 
 
         except KeyboardInterrupt:
             self.running = False
             logging.exception("Keyboard exit.")
         
         finally:
+            x = np.arange(0, num_tracked)
+            plt.plot(x, errors, color="red", label='error')
+            plt.plot(x, signals, color="green", label='signal')
+            plt.plot(x, np.zeros_like(x), color="blue", label='target')
+            plt.legend()
+            plt.savefig("pid.png")
             self.context.destroy()
 
 if __name__ == "__main__":

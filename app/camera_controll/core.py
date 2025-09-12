@@ -10,6 +10,9 @@ from sources import VideoStream, coord_to_angle
 from sources.tracked_obj import TrackObject
 from configs import OverviewConfig, TrackerConfig, ConnactionsConfig, CalibrationConfig
 
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.DEBUG)
+
 class AICore(Process):
     def __init__(self, daemon = None):
         super().__init__(daemon=daemon)
@@ -157,12 +160,12 @@ class AICore(Process):
 
                 # initializate target
                 self.target = TrackObject(absolute, bbox.cpu().tolist(), time=time.time())
-                logging.info(f"Init target: {self.target}")
+                logger.info(f"Init target: {self.target}")
                 
                 self.state = "standby"
                 self.send_target()
             else:
-                logging.info(f"No drone information")
+                logger.info(f"No drone information")
                 time.sleep(self._overview_timout)
 
     def standby(self) -> TrackObject:
@@ -202,7 +205,7 @@ class AICore(Process):
 
                     # initializate target
                     self.target.update(absolute, bbox.cpu().tolist(), tracked=False, error=(None, None))
-                    logging.info(f"OV. Update target: {self.target}")
+                    logger.info(f"OV. Update target: {self.target}")
 
             else:
 
@@ -223,7 +226,7 @@ class AICore(Process):
                     _, bbox = info
                     err_x, err_y = self.get_angles(bbox)
                     self.target.update(error=(float(err_x), float(err_y)), tracked=True, box=bbox.cpu().tolist())
-                    logging.info(f"T. Update target: {self.target}")
+                    logger.info(f"T. Update target: {self.target}")
             
             self.send_target()
 
@@ -241,6 +244,7 @@ class AICore(Process):
                 imgsz=(576, 1024),
                 conf=self.t_config.DETECTOR_CONF,
                 iou=self.t_config.DETECTOR_IOU,
+                verbose=True
                 )
 
             info = self.get_biggest_info(detection_results)
@@ -258,14 +262,14 @@ class AICore(Process):
         self.state = "standby"
 
     def run(self):
-        logging.info("System initialization...")
+        logger.info("System initialization...")
         self._init_connaction()
         self._init_cameras()
         self.running = True
         
         try:
             while self.running:
-                logging.info(f"System state: {self.state}")
+                logger.info(f"System state: {self.state}")
 
                 if self.state == "overview":
                     self.overview()
@@ -275,7 +279,7 @@ class AICore(Process):
                     self.tracking()
         except KeyboardInterrupt:
             self.running = False
-            logging.exception("Keyboard exit.")
+            logger.exception("Keyboard exit.")
         
         finally:
             self.context.destroy()

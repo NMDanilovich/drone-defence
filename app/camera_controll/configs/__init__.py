@@ -22,7 +22,13 @@ def read_config(path:str) -> dict:
         for key, value in config.items(section):
             try:
                 # Try converting to integer first
-                config_dict[section][key] = float(value) if "." in value else int(value)
+                if "." in value:
+                    config_dict[section][key] = float(value)
+                elif "None" == value:
+                    config_dict[section][key] = None
+                else:
+                    config_dict[section][key] = int(value)
+
             except ValueError:
                 config_dict[section][key] = value
   
@@ -101,6 +107,13 @@ class TrackerConfig(BaseConfig):
             section_name="tracking"
         )
 
+class AICoreConfig(BaseConfig):
+    def __init__(self, path:str=None):
+        super().__init__(
+            path=Path(__file__).parent.joinpath("ai_core.conf") if path is None else path, 
+            section_name="core"
+        )
+
 class ConnactionsConfig(BaseConfig):
     def __init__(self, path:str=None):
         super().__init__(
@@ -118,4 +131,4 @@ class CalibrationConfig(BaseConfig):
 
         self.ALL = list(self.data[self.section_name].values())
 
-__all__ = (CarriageConfig, OverviewConfig, TrackerConfig, ConnactionsConfig)
+__all__ = (CarriageConfig, OverviewConfig, TrackerConfig, ConnactionsConfig, AICoreConfig)

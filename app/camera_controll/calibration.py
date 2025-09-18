@@ -22,7 +22,7 @@ def interactive_mode():
     while True:
         x_steps = 0
         y_degrees = 0
-        speed = 50
+        speed = 5
         com = input("A/D/W/S: ").lower()
         if com == "a":
             x_steps += speed
@@ -104,8 +104,8 @@ def auto_mode():
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(prog="python3 calibration.py")
-    parser.add_argument("--x", type=int, default=0, help="flag to x axis control")
-    parser.add_argument("--y", type=int, default=0, help="flag to y axis control")
+    parser.add_argument("--x", type=float, default=0, help="flag to x axis control")
+    parser.add_argument("--y", type=float, default=0, help="flag to y axis control")
     parser.add_argument("--abs", action="store_true", help="use this when you need absolute movement")
     parser.add_argument("--start", action="store_true", help="move to start position")
     parser.add_argument("--inter", action="store_true", help="for interactive mode relative movement")

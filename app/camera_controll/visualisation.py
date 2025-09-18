@@ -1,4 +1,6 @@
 from pathlib import Path
+import datetime
+from threading import Thread
 
 import cv2
 import zmq
@@ -6,11 +8,13 @@ import numpy as np
 
 from sources import VideoStream
 
-class Visualization:
+class Visualization(Thread):
     def __init__(self):
+        super().__init__()
         self.context = zmq.Context.instance()
         self.subscriber = self.context.socket(zmq.SUB)
-        self.subscriber.connect("tcp://127.0.0.1:8000")
+        self.subscriber.setsockopt(zmq.CONFLATE, 1)
+        self.subscriber.connect(f"tcp://127.0.0.1:8000")
         self.subscriber.subscribe("")
 
         # Hardcoded for now, should be dynamic
@@ -23,6 +27,8 @@ class Visualization:
         self._save_dir.mkdir(exist_ok=True)
 
         self.save_path =  self._save_dir / "output.avi"
+
+        self.running = True
 
     def drow_info(self, frame, info=None):
         
@@ -49,25 +55,39 @@ class Visualization:
         if info:
             bbox = info.get("box")
             tracked = info.get("tracked")
+            error = info.get("error")
+            det_time = info.get("time")
             
             if tracked:
+                color = (0, 255, 0)
                 x, y, w, h = [int(c) for c in bbox]
                 pt1 = (x - w // 2, y - h // 2)
                 pt2 = (x + w // 2, y + h // 2)
                 cv2.rectangle(frame, pt1, pt2, (0, 255, 0), 2)
                 cv2.putText(frame, "target", pt1, cv2.FONT_HERSHEY_COMPLEX, 1, (0, 0, 255), 2)
 
-        cv2.putText(frame, f"Track: {tracked}", (25, 25), cv2.FONT_HERSHEY_COMPLEX, 1, (0, 0, 255), 2)
+                cv2.circle(frame, (x, y), 4, (0, 255, 0), -1)
+                cv2.putText(frame, str((x, y)), (x, y), cv2.FONT_HERSHEY_COMPLEX, 0.5, (0, 0, 255), 2)
+
+            else:
+                color = (0, 0, 255)
+            
+            cv2.putText(frame, f"Track: {tracked}", (25, 30), cv2.FONT_HERSHEY_COMPLEX, 1, color, 2)
+            cv2.putText(frame, f"Error: {error}", (25, 60), cv2.FONT_HERSHEY_COMPLEX, 1, color, 2)
+            cv2.putText(frame, f"Detection time: {datetime.datetime.fromtimestamp(det_time)}", (25, 90), cv2.FONT_HERSHEY_COMPLEX, 1, color, 2)
+            cv2.putText(frame, f"Current time: {datetime.datetime.now()}", (25, 120), cv2.FONT_HERSHEY_COMPLEX, 1, color, 2)
 
         return frame
 
+    def stop(self):
+        self.running = False
 
     def run(self, show=False):
         fourcc = cv2.VideoWriter_fourcc(*'XVID')
         out = cv2.VideoWriter(self.save_path, fourcc, 20.0, (self.width, self.hieght), True)
-
+        
         try:
-            while True:
+            while self.running:
                 frame = self.video_stream.read()
 
 
@@ -99,6 +119,7 @@ class Visualization:
             print(f"Complite! Save video as {self.save_path}")
             out.release()
             self.video_stream.stop()
+            self.context.destroy()
             cv2.destroyAllWindows()
 
 if __name__ == "__main__":

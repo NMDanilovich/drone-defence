@@ -23,8 +23,8 @@ class AICore(Process):
         self.calibr_config = CalibrationConfig()
 
         self.state = "overview" # "standby", "tracking"
-        self._overview_timout = 1
-        self._standby_timeout = 3
+        self._overview_timout = 0.1
+        self._standby_timeout = 1
 
         self.cameras = []
         self._track_index = None

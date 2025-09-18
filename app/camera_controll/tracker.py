@@ -2,6 +2,7 @@ import time
 import datetime
 import argparse
 from typing import Tuple
+from pathlib import Path
 import logging
 
 import numpy as np
@@ -9,9 +10,14 @@ import zmq
 from matplotlib import pyplot as plt
 
 from sources import CarriageController
+from visualisation import Visualization
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
+
+directory = Path(__file__).parent
+results = directory / "results"
+results.mkdir(exist_ok=True)
 
 class PID:
     def __init__(self, kp: float, ki: float, kd: float, 
@@ -67,12 +73,12 @@ class PID:
         self.setpoint = setpoint
 
 class TrackingSystem:
+
     def __init__(self):
         self.controller = CarriageController()
 
-        # self.x_pid = PID(kp=0.036, ki=0.0010, kd=0.0163)
-        self.x_pid = PID(kp=0.056, ki=0.0015, kd=0.0017)
-        self.y_pid = PID(kp=0.1, ki=0.00, kd=-0.0000)
+        self.x_pid = PID(kp=0.0935, ki=0.0, kd=0.0002)
+        self.y_pid = PID(kp=0.1, ki=0.003, kd=0.)
 
         self.running = False
         self._last_data = None # last data message from ai core 
@@ -85,6 +91,7 @@ class TrackingSystem:
         """
         self.context = zmq.Context.instance()
         self.subscriber = self.context.socket(zmq.SUB)
+        self.subscriber.setsockopt(zmq.CONFLATE, 1)
         self.subscriber.connect(f"tcp://127.0.0.1:8000")
         self.subscriber.subscribe(filter_msg)
 
@@ -106,17 +113,27 @@ class TrackingSystem:
 
         return new_msg, tracked, absolute, bbox, error, time
 
+    def save_results(self):
+            x = np.arange(0, self._num_tracked)
+            plt.plot(x, self._x_errors, color="brown", label='x error')
+            plt.plot(x, self._x_signals, color="lime", label='x signal')
+            plt.plot(x, self._y_errors, color="red", label='y error')
+            plt.plot(x, self._y_signals, color="green", label='y signal')
+            plt.plot(x, np.zeros_like(x), color="blue", label='target')
+            plt.legend()
+            plt.savefig(results.joinpath("pid.png"))  
+
     def main(self):
         logging.info("Controller initialization...")
         self._init_connaction()
         self.running = True
         plt.plot()
 
-        y_errors = []
-        x_errors = []
-        y_signals = []
-        x_signals = []
-        num_tracked = 0
+        self._y_errors = []
+        self._x_errors = []
+        self._y_signals = []
+        self._x_signals = []
+        self._num_tracked = 0
 
         try:
             while self.running:
@@ -128,11 +145,11 @@ class TrackingSystem:
                         x_error = error[0]
                         y_error = -1 * error[1]
 
-                        y_errors.append(y_error)
-                        x_errors.append(y_error)
+                        self._y_errors.append(y_error)
+                        self._x_errors.append(x_error)
 
-                        x_output = self.x_pid.update(x_error, det_time)
-                        y_output = self.y_pid.update(y_error, det_time)
+                        x_output = self.x_pid.update(x_error)
+                        y_output = self.y_pid.update(y_error)
 
                         logger.debug(f"x: {x_error} -> {x_output}")
                         logger.debug(f"y: {y_error} -> {y_output}")
@@ -140,31 +157,27 @@ class TrackingSystem:
                         dt_object = datetime.datetime.fromtimestamp(det_time)
                         logger.debug(f"Tracked time: {dt_object} Current time: {datetime.datetime.now()}")
 
-                        y_signals.append(x_output)
-                        x_signals.append(y_output)
-                        num_tracked += 1
-
+                        self._y_signals.append(y_output)
+                        self._x_signals.append(x_output)
+                        self._num_tracked += 1
+                        
                         self.controller.move_relative(x_output, y_output)
+
                     else:
                         self.controller.move_to_absolute(*absolute)
 
                         self.x_pid.reset()
                         self.y_pid.reset()
             
-                    # if num_tracked == 500:
-                    #     break 
+                    if self._num_tracked == 100:
+                        break 
 
         except KeyboardInterrupt:
             self.running = False
             logging.exception("Keyboard exit.")
         
         finally:
-            x = np.arange(0, num_tracked)
-            plt.plot(x, errors, color="red", label='error')
-            plt.plot(x, signals, color="green", label='signal')
-            plt.plot(x, np.zeros_like(x), color="blue", label='target')
-            plt.legend()
-            plt.savefig("pid.png")
+            self.save_results()
             self.context.destroy()
 
 if __name__ == "__main__":
@@ -173,6 +186,9 @@ if __name__ == "__main__":
     parser.add_argument("--debug", action="store_true")
 
     args = parser.parse_args()
+    
+    vis = Visualization()
+    vis.start()
 
     if args.start:
         from core import AICore
@@ -180,3 +196,5 @@ if __name__ == "__main__":
         ai_core.start()
 
     TrackingSystem().main()
+    vis.stop()
+

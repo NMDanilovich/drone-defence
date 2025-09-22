@@ -6,7 +6,6 @@ sys.path.append(str(CONFIGS))
 
 from .carriage import CarriageController
 from .stream import VideoStream
-#from .model_utils import descriptor, BBox
 from .engine_utils import coord_to_angle, coord_to_steps
 
 

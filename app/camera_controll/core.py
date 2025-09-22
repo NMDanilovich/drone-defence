@@ -41,24 +41,24 @@ class AICore(Process):
         """
 
         self.context = zmq.Context.instance()
-        self.socket = self.context.socket(zmq.PUB)
-        self.socket.setsockopt(zmq.SNDHWM, 10)
-        self.socket.setsockopt(zmq.RCVHWM, 10)
-        self.socket.bind(f"tcp://127.0.0.1:8000")
+
+        self.context.socket(zmq.PUB)
+
+        self.publisher = self.context.socket(zmq.PUB)
+        self.publisher.setsockopt(zmq.SNDHWM, 10)
+        self.publisher.setsockopt(zmq.RCVHWM, 10)
+        self.publisher.bind(f"tcp://127.0.0.1:8000")
+
 
     def _init_cameras(self):
         for camera in self.conn_conf.data:
-            if camera.startswith("T"):
-                for_track = True
-            else:
-                for_track = False
 
             login = self.conn_conf.data[camera]["login"]
             password = self.conn_conf.data[camera]["password"]
             ip = self.conn_conf.data[camera]["ip"]
             port = self.conn_conf.data[camera]["port"]
 
-            self.add_ip_camera(login, password, ip, port, for_track=for_track)
+            self.add_ip_camera(login, password, ip, port, for_track=self.conn_conf.data[camera]["track"])
 
     def add_ip_camera(self, login, password, camera_ip, camera_port, for_track=False):
         template = "rtsp://{}:{}@{}:{}/Streaming/channels/101"
@@ -123,7 +123,7 @@ class AICore(Process):
         if self.target is not None:
             message = self.target.__dict__
 
-            self.socket.send_json(message)
+            self.publisher.send_json(message)
 
     def reset(self):
         self.target = None
@@ -131,6 +131,9 @@ class AICore(Process):
     def overview(self) -> None:
         while self.target is None:
             frames = self.get_overview_frames()
+
+            if not frames:
+                continue
 
             detection_results = []
             for frame in frames:
@@ -175,6 +178,10 @@ class AICore(Process):
         while not tracked:
             if time.time() - standby_time > self._standby_timeout:
                 frames = self.get_overview_frames()
+
+                if not frames:
+                    continue
+
                 detection_results = []
                 for frame in frames:
                     result = self.detector.predict(
@@ -210,6 +217,10 @@ class AICore(Process):
             else:
 
                 frame = self.get_tracking_frame()
+
+                if frame is None:
+                    continue
+
                 detection_results = self.detector.predict(
                     frame, 
                     imgsz=(576, 1024),
@@ -239,12 +250,16 @@ class AICore(Process):
     def tracking(self) -> TrackObject:
         while time.time() - self.target.time < self._short_duration:
             frame = self.get_tracking_frame()
+
+            if frame is None:
+                continue
+
             detection_results = self.detector.predict(
                 frame, 
                 imgsz=(576, 1024),
                 conf=self.t_config.DETECTOR_CONF,
                 iou=self.t_config.DETECTOR_IOU,
-                verbose=True
+                verbose=False
                 )
 
             info = self.get_biggest_info(detection_results)

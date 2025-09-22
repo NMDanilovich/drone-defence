@@ -26,12 +26,15 @@ def read_config(path:str) -> dict:
                     config_dict[section][key] = float(value)
                 elif "None" == value:
                     config_dict[section][key] = None
+                elif "true" == value.lower():
+                    config_dict[section][key] = True
+                elif "false" == value.lower():
+                    config_dict[section][key] = False
                 else:
                     config_dict[section][key] = int(value)
 
             except ValueError:
                 config_dict[section][key] = value
-  
     
     return config_dict
 

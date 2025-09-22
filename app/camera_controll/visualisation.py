@@ -96,7 +96,6 @@ class Visualization(Thread):
 
                 try:
                     data = self.subscriber.recv_json(flags=zmq.NOBLOCK)
-
                 except zmq.Again:
                     data = None
 

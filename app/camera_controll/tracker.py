@@ -77,7 +77,9 @@ class TrackingSystem:
     def __init__(self):
         self.controller = CarriageController()
 
-        self.x_pid = PID(kp=0.0935, ki=0.0, kd=0.0002)
+        # self.x_pid = PID(kp=0.0935, ki=0.0, kd=0.0002)
+        # self.x_pid = PID(kp=0.083, ki=0.003, kd=0.013)
+        self.x_pid = PID(kp=0.115, ki=0.00025, kd=0.0025)
         self.y_pid = PID(kp=0.1, ki=0.003, kd=0.)
 
         self.running = False
@@ -120,10 +122,11 @@ class TrackingSystem:
             plt.plot(x, self._y_errors, color="red", label='y error')
             plt.plot(x, self._y_signals, color="green", label='y signal')
             plt.plot(x, np.zeros_like(x), color="blue", label='target')
+            plt.grid()
             plt.legend()
             plt.savefig(results.joinpath("pid.png"))  
 
-    def main(self):
+    def run(self):
         logging.info("Controller initialization...")
         self._init_connaction()
         self.running = True
@@ -169,8 +172,8 @@ class TrackingSystem:
                         self.x_pid.reset()
                         self.y_pid.reset()
             
-                    if self._num_tracked == 100:
-                        break 
+                    # if self._num_tracked == 100:
+                    #     break 
 
         except KeyboardInterrupt:
             self.running = False
@@ -180,21 +183,29 @@ class TrackingSystem:
             self.save_results()
             self.context.destroy()
 
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--start", action="store_true")
-    parser.add_argument("--debug", action="store_true")
+def start_system(core=False, debug=False):
 
-    args = parser.parse_args()
-    
-    vis = Visualization()
-    vis.start()
+    if debug:
+        vis = Visualization()
+        vis.start()
 
-    if args.start:
+    if core:
         from core import AICore
         ai_core = AICore()
         ai_core.start()
 
-    TrackingSystem().main()
-    vis.stop()
+    system = TrackingSystem()
+    system.run()
 
+    if debug:
+        vis.stop()
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--core", action="store_true")
+    parser.add_argument("--debug", action="store_true")
+
+    args = parser.parse_args()
+
+    start_system(args.core, args.debug)
+    

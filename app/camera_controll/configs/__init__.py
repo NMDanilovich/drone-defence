@@ -22,10 +22,19 @@ def read_config(path:str) -> dict:
         for key, value in config.items(section):
             try:
                 # Try converting to integer first
-                config_dict[section][key] = float(value) if "." in value else int(value)
+                if "." in value:
+                    config_dict[section][key] = float(value)
+                elif "None" == value:
+                    config_dict[section][key] = None
+                elif "true" == value.lower():
+                    config_dict[section][key] = True
+                elif "false" == value.lower():
+                    config_dict[section][key] = False
+                else:
+                    config_dict[section][key] = int(value)
+
             except ValueError:
                 config_dict[section][key] = value
-  
     
     return config_dict
 
@@ -51,7 +60,7 @@ def write_config(path: str, config_data: dict):
         config.write(configfile)
 
 class BaseConfig:
-    def __init__(self,  path: str = None, section_name: str = None):
+    def __init__(self,  path: str = None):
         self.path = path
         self.data = read_config(path)
         
@@ -60,30 +69,28 @@ class BaseConfig:
         elif len(self.data.items()) == 0:
             logging.warning("Lenght config data is 0!")
 
-        if section_name is None:
-            section = self.data
-        else:
-            self.section_name = section_name.upper()
-            section = self.data[self.section_name]
-
-        for key, value in section.items():
+        for key, value in self.data.items():
             setattr(self, key.upper(), value)
 
     def write(self):
         """Write the last config changes
         """
 
-        for key, value in self.data[self.section_name].items():
-            self.data[self.section_name][key] = self.__getattribute__(key.upper())
+        for key, value in self.data.items():
+            self.data[key] = self.__getattribute__(key.upper())
         
         write_config(self.path, self.data)
 
+class SystemConfig(BaseConfig):
+    def __init__(self, path:str=None):
+        super().__init__(
+            path=Path(__file__).parent.joinpath("system.conf") if path is None else path, 
+        )
 
 class CarriageConfig(BaseConfig):
     def __init__(self, path:str=None):
         super().__init__(
             path=Path(__file__).parent.joinpath("carriage.conf") if path is None else path, 
-            section_name="carriage"
         )
 
 
@@ -91,14 +98,13 @@ class OverviewConfig(BaseConfig):
     def __init__(self, path:str=None):
         super().__init__(
             path=Path(__file__).parent.joinpath("overview.conf") if path is None else path, 
-            section_name="overview"
         )
 
 class TrackerConfig(BaseConfig):
     def __init__(self, path:str=None):
         super().__init__(
             path=Path(__file__).parent.joinpath("tracking.conf") if path is None else path, 
-            section_name="tracking"
+
         )
 
 class ConnactionsConfig(BaseConfig):
@@ -113,9 +119,8 @@ class CalibrationConfig(BaseConfig):
     def __init__(self, path:str=None):
         super().__init__(
             path=Path(__file__).parent.joinpath("calibration.conf") if path is None else path,
-            section_name="calibration"
         )
 
-        self.ALL = list(self.data[self.section_name].values())
+        self.ALL = list(self.CALIBRATION.values())
 
 __all__ = (CarriageConfig, OverviewConfig, TrackerConfig, ConnactionsConfig)

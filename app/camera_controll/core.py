@@ -8,7 +8,7 @@ import zmq
 
 from sources import VideoStream, coord_to_angle
 from sources.tracked_obj import TrackObject
-from configs import SystemConfig, OverviewConfig, TrackerConfig, ConnactionsConfig, CalibrationConfig
+from configs import SystemConfig, ConnactionsConfig
 
 logger = logging.getLogger("CoreServise")
 logger.setLevel(logging.DEBUG)
@@ -18,14 +18,11 @@ class AICore(Process):
         super().__init__(daemon=daemon)
         # TODO change configs
         self.config = SystemConfig()
-        self.conn_conf = ConnactionsConfig()
-        self.ov_config = OverviewConfig()
-        self.t_config = TrackerConfig()
-        self.calibr_config = CalibrationConfig()
+        self.connactions = ConnactionsConfig()
 
         self.state = "overview" # "standby", "tracking"
-        self._overview_timout = 0.1
-        self._standby_timeout = 1
+        self._overview_timeout = self.config.OVERVIEW["timeout"]
+        self._standby_timeout = self.config.STANDBY["timeout"]
 
         self.cameras = []
         self._track_index = None
@@ -53,23 +50,24 @@ class AICore(Process):
 
 
     def _init_cameras(self):
-        for camera in self.conn_conf.data:
-
-            login = self.conn_conf.data[camera]["login"]
-            password = self.conn_conf.data[camera]["password"]
-            ip = self.conn_conf.data[camera]["ip"]
-            port = self.conn_conf.data[camera]["port"]
-
-            self.add_ip_camera(login, password, ip, port, for_track=self.conn_conf.data[camera]["track"])
-
-    def add_ip_camera(self, login, password, camera_ip, camera_port, for_track=False):
         template = "rtsp://{}:{}@{}:{}/Streaming/channels/101"
-        path = template.format(login, password, camera_ip, camera_port)
-        stream = VideoStream(path)
-        self.cameras.append(stream)
 
-        if for_track:
-            self._track_index = len(self.cameras) - 1
+        for i,  camera in enumerate(self.connactions.data.values()):
+            
+            if camera["path"]:
+                path = camera["path"]
+            else:
+                login = camera["login"]
+                password = camera["password"]
+                ip = camera["ip"]
+                port = camera["port"]
+                path = template.format(login, password, ip, port)
+            
+            stream = VideoStream(path)
+            self.cameras.append(stream)
+
+            if camera["track"]:
+                self._track_index = i
 
     def get_overview_frames(self) -> list:
         frames = []
@@ -94,7 +92,7 @@ class AICore(Process):
                 continue
 
             for result in camera_results:    
-                if result.boxes.cls != self.t_config.DRONE_CLASS_ID:
+                if result.boxes.cls != self.config.MODEL["drone_class_id"]:
                     continue
 
                 x, y, w, h = result.boxes.xywh[0]
@@ -110,10 +108,10 @@ class AICore(Process):
     def get_angles(self, bbox):
         x, y = bbox[:2]
 
-        width = self.ov_config.WIDTH_FRAME
-        hor = self.ov_config.HORIZ_ANGLE
-        height = self.ov_config.HEIGHT_FRAME
-        vert = self.ov_config.VERTIC_ANGLE
+        width = self.config.OVERVIEW["width_frame"]
+        hor = self.config.OVERVIEW["horiz_angle"]
+        height = self.config.OVERVIEW["height_frame"]
+        vert = self.config.OVERVIEW["vertic_angle"]
 
         x_angles = coord_to_angle(x, width, hor)
         y_angles = coord_to_angle(y, height, vert)
@@ -153,8 +151,8 @@ class AICore(Process):
             if info:
                 index, bbox = info
 
-                x_calib = self.calibr_config.ALL[index]
-                y_calib = self.ov_config.HORIZONT
+                x_calib = self.config.CALIBRATION[f"camera_{index}"]
+                y_calib = self.config.OVERVIEW["horizont"]
 
                 rel_x, rel_y = self.get_angles(bbox)
 
@@ -171,7 +169,7 @@ class AICore(Process):
                 self.send_target()
             else:
                 logger.info(f"No drone information")
-                time.sleep(self._overview_timout)
+                time.sleep(self._overview_timeout)
 
     def standby(self) -> TrackObject:
         tracked = False
@@ -202,8 +200,8 @@ class AICore(Process):
                 if info:
                     index, bbox = info
 
-                    x_calib = self.calibr_config.ALL[index]
-                    y_calib = self.ov_config.HORIZONT
+                    x_calib = self.config.CALIBRATION[f"camera_{index}"]
+                    y_calib = self.config.OVERVIEW["horizont"]
 
                     rel_x, rel_y = self.get_angles(bbox)
 

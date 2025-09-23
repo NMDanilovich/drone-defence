@@ -87,26 +87,6 @@ class SystemConfig(BaseConfig):
             path=Path(__file__).parent.joinpath("system.conf") if path is None else path, 
         )
 
-class CarriageConfig(BaseConfig):
-    def __init__(self, path:str=None):
-        super().__init__(
-            path=Path(__file__).parent.joinpath("carriage.conf") if path is None else path, 
-        )
-
-
-class OverviewConfig(BaseConfig):
-    def __init__(self, path:str=None):
-        super().__init__(
-            path=Path(__file__).parent.joinpath("overview.conf") if path is None else path, 
-        )
-
-class TrackerConfig(BaseConfig):
-    def __init__(self, path:str=None):
-        super().__init__(
-            path=Path(__file__).parent.joinpath("tracking.conf") if path is None else path, 
-
-        )
-
 class ConnactionsConfig(BaseConfig):
     def __init__(self, path:str=None):
         super().__init__(
@@ -115,12 +95,4 @@ class ConnactionsConfig(BaseConfig):
 
         self.NAMES = list(self.data.keys())
 
-class CalibrationConfig(BaseConfig):
-    def __init__(self, path:str=None):
-        super().__init__(
-            path=Path(__file__).parent.joinpath("calibration.conf") if path is None else path,
-        )
-
-        self.ALL = list(self.CALIBRATION.values())
-
-__all__ = (CarriageConfig, OverviewConfig, TrackerConfig, ConnactionsConfig)
+__all__ = (SystemConfig, ConnactionsConfig)

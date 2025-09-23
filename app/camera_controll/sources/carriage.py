@@ -12,7 +12,7 @@ import logging
 
 import numpy as np
 
-from configs import CarriageConfig
+from configs import SystemConfig
 from .uartapi import Uart, JETSON_SERIAL
 
 # Configure logging
@@ -38,28 +38,32 @@ class CarriageController:
             start_x_pos (int): Default X axis position 
             start_y_pos (int): Default Y axis position 
         """
-        self.config = CarriageConfig()
+        self.config = SystemConfig()
 
         # Current absolute position
-        self.current_x_angle = self.config.LAST_X_POSITION # Current absolute X position in steps
-        self.current_y_angle = self.config.LAST_Y_POSITION  # Current absolute Y position in degrees
+        self.current_x_angle = self.config.CARRIAGE["last_x_position"] # Current absolute X position in steps
+        self.current_y_angle = self.config.CARRIAGE["last_y_position"]  # Current absolute Y position in degrees
 
         # Movement limits
-        self.max_x_angle = self.config.MAX_X_COORD
-        self.min_x_angle = self.config.MIN_X_COORD
-        self.max_y_angle = self.config.MAX_Y_COORD
-        self.min_y_angle = self.config.MIN_Y_COORD
+        self.max_x_angle = self.config.CARRIAGE["max_x_coord"]
+        self.min_x_angle = self.config.CARRIAGE["min_x_coord"]
+        self.max_y_angle = self.config.CARRIAGE["max_y_coord"]
+        self.min_y_angle = self.config.CARRIAGE["min_y_coord"]
     
         # UART communication
-        self.uart = Uart(self.config.SERIAL_PORT, baudrate=self.config.BAUDRATE, is_blocking=is_blocking)
+        self.uart = Uart(
+            port=self.config.CARRIAGE["serial_port"], 
+            baudrate=self.config.CARRIAGE["baudrate"], 
+            is_blocking=is_blocking
+        )
         
         # Information (status) from controller
         self.contr_info: dict
         self.update_info()
 
         # setup start position
-        self.start_x_pos = self.config.START_X_POSITION
-        self.start_y_pos = self.config.START_Y_POSITION
+        self.start_x_pos = self.config.CARRIAGE["start_x_position"]
+        self.start_y_pos = self.config.CARRIAGE["start_y_position"]
         
         self.command_executed = False
 

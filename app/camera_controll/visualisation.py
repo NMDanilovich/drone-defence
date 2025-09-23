@@ -8,6 +8,10 @@ import numpy as np
 
 from sources import VideoStream
 
+directory = Path(__file__).parent
+RESULTS = directory / "results"
+RESULTS.mkdir(exist_ok=True)
+
 class Visualization(Thread):
     def __init__(self):
         super().__init__()
@@ -26,7 +30,8 @@ class Visualization(Thread):
         self._save_dir = Path("results/")
         self._save_dir.mkdir(exist_ok=True)
 
-        self.save_path =  self._save_dir / "output.avi"
+        name = datetime.datetime.now().strftime("%Y%m%d_%H_%M_%S")
+        self.save_path = RESULTS / f"{name}.avi"
 
         self.running = True
 
@@ -84,7 +89,7 @@ class Visualization(Thread):
 
     def run(self, show=False):
         fourcc = cv2.VideoWriter_fourcc(*'XVID')
-        out = cv2.VideoWriter(self.save_path, fourcc, 20.0, (self.width, self.hieght), True)
+        out = cv2.VideoWriter(self.save_path, fourcc, 30.0, (self.width, self.hieght), True)
         
         try:
             while self.running:

@@ -13,11 +13,11 @@ from sources import CarriageController
 from visualisation import Visualization
 
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.DEBUG)
+logger.setLevel(logging.INFO)
 
 directory = Path(__file__).parent
-results = directory / "results"
-results.mkdir(exist_ok=True)
+RESULTS = directory / "results"
+RESULTS.mkdir(exist_ok=True)
 
 class PID:
     def __init__(self, kp: float, ki: float, kd: float, 
@@ -74,7 +74,7 @@ class PID:
 
 class TrackingSystem:
 
-    def __init__(self):
+    def __init__(self, debug=False):
         self.controller = CarriageController()
 
         # self.x_pid = PID(kp=0.0935, ki=0.0, kd=0.0002)
@@ -84,6 +84,10 @@ class TrackingSystem:
 
         self.running = False
         self._last_data = None # last data message from ai core 
+        self.debug = debug
+        
+        if debug:
+            logger.setLevel(logging.DEBUG)
 
     def _init_connaction(self, filter_msg:str=""):
         """Setting up connection to proxy
@@ -116,15 +120,15 @@ class TrackingSystem:
         return new_msg, tracked, absolute, bbox, error, time
 
     def save_results(self):
-            x = np.arange(0, self._num_tracked)
-            plt.plot(x, self._x_errors, color="brown", label='x error')
-            plt.plot(x, self._x_signals, color="lime", label='x signal')
-            plt.plot(x, self._y_errors, color="red", label='y error')
-            plt.plot(x, self._y_signals, color="green", label='y signal')
-            plt.plot(x, np.zeros_like(x), color="blue", label='target')
-            plt.grid()
-            plt.legend()
-            plt.savefig(results.joinpath("pid.png"))  
+        x = np.arange(0, self._num_tracked)
+        plt.plot(x, self._x_errors, color="brown", label='x error')
+        plt.plot(x, self._x_signals, color="lime", label='x signal')
+        plt.plot(x, self._y_errors, color="red", label='y error')
+        plt.plot(x, self._y_signals, color="green", label='y signal')
+        plt.plot(x, np.zeros_like(x), color="blue", label='target')
+        plt.grid()
+        plt.legend()
+        plt.savefig(RESULTS.joinpath("pid.png"))  
 
     def run(self):
         logging.info("Controller initialization...")

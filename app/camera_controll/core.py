@@ -8,15 +8,16 @@ import zmq
 
 from sources import VideoStream, coord_to_angle
 from sources.tracked_obj import TrackObject
-from configs import OverviewConfig, TrackerConfig, ConnactionsConfig, CalibrationConfig
+from configs import SystemConfig, OverviewConfig, TrackerConfig, ConnactionsConfig, CalibrationConfig
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("CoreServise")
 logger.setLevel(logging.DEBUG)
 
 class AICore(Process):
     def __init__(self, daemon = None):
         super().__init__(daemon=daemon)
         # TODO change configs
+        self.config = SystemConfig()
         self.conn_conf = ConnactionsConfig()
         self.ov_config = OverviewConfig()
         self.t_config = TrackerConfig()
@@ -33,7 +34,8 @@ class AICore(Process):
         self._short_duration = 5
         self._long_duration = 10
 
-        self.detector = YOLO(self.ov_config.MODEL_PATH, task="detect")
+        self.detector = YOLO(self.config.MODEL["path"], task="detect")
+        self.image_size = (576, 1024)
         self.running = False
 
     def _init_connaction(self):
@@ -139,9 +141,9 @@ class AICore(Process):
             for frame in frames:
                 result = self.detector.predict(
                     frame, 
-                    imgsz=(576, 1024),
-                    conf=self.ov_config.DETECTOR_CONF,
-                    iou=self.ov_config.DETECTOR_IOU,
+                    imgsz=self.image_size,
+                    conf=self.config.MODEL["overview_conf"],
+                    iou=self.config.MODEL["overview_iou"],
                     verbose=False
                     )
                 detection_results.append(result[0])
@@ -186,9 +188,9 @@ class AICore(Process):
                 for frame in frames:
                     result = self.detector.predict(
                         frame, 
-                        imgsz=(576, 1024),
-                        conf=self.ov_config.DETECTOR_CONF,
-                        iou=self.ov_config.DETECTOR_IOU,
+                        imgsz=self.image_size,
+                        conf=self.config.MODEL["overview_conf"],
+                        iou=self.config.MODEL["overview_iou"],
                         verbose=False
                         )
                     detection_results.append(result[0])
@@ -221,11 +223,11 @@ class AICore(Process):
                 if frame is None:
                     continue
 
-                detection_results = self.detector.predict(
+                detection_results = self.detector.track(
                     frame, 
-                    imgsz=(576, 1024),
-                    conf=self.t_config.DETECTOR_CONF,
-                    iou=self.t_config.DETECTOR_IOU,
+                    imgsz=self.image_size,
+                    conf=self.config.MODEL["tracking_conf"],
+                    iou=self.config.MODEL["tracking_iou"],
                     )
                 
                 info = self.get_biggest_info(detection_results)
@@ -254,11 +256,11 @@ class AICore(Process):
             if frame is None:
                 continue
 
-            detection_results = self.detector.predict(
+            detection_results = self.detector.track(
                 frame, 
-                imgsz=(576, 1024),
-                conf=self.t_config.DETECTOR_CONF,
-                iou=self.t_config.DETECTOR_IOU,
+                imgsz=self.image_size,
+                conf=self.config.MODEL["tracking_conf"],
+                iou=self.config.MODEL["tracking_iou"],
                 verbose=False
                 )
 

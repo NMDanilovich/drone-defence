@@ -99,9 +99,8 @@ class Uart:
 
         command = f"XR{x_angle} YR{y_angle}\n"
         end_marker = "TIME"
-        thread = Thread(target=self.__sender, args=(command, end_marker), daemon=True)
-        thread.start()
-        thread.join()
+
+        return self.__sender(command, end_marker)
     
     def send_absolute(self, x_angle, y_angle):
         """Send absolute coordinates on controller
@@ -114,9 +113,7 @@ class Uart:
         command = f"XA{x_angle} YA{y_angle}\n"
         end_marker = "TIME"
             
-        thread = Thread(target=self.__sender, args=(command, end_marker), daemon=True)
-        thread.start()
-        thread.join()
+        return self.__sender(command, end_marker)
 
     def fire_control(self, mode):
         if mode == "fire":
@@ -124,10 +121,8 @@ class Uart:
         elif mode == "stop":    
             command = "FIRE:OFF\n"
 
-        thread = Thread(target=self.__sender, args=(command), daemon=True)
-        thread.start()
-        thread.join()
-        
+        return self.__sender(command)
+
 
 def main(x_degrees:float=0, y_degrees:float=0):
     """Main function for hand testing

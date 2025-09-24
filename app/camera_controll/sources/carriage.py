@@ -152,9 +152,9 @@ class CarriageController:
         """Recive the status information from controller and return dict (update the self.contr_info variable). 
         """
         temp_info = self.uart.get_info()
-        temp_info = temp_info[-1]
-
-        if temp_info.startswith("STATUS"):
+        
+        if temp_info:
+            temp_info = temp_info[-1]
             temp_info = temp_info.replace("STATUS", "").split()
             temp_dict = {}
             for msg in temp_info:

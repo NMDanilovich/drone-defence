@@ -27,8 +27,8 @@ class VideoStream:
         self.cap = cv2.VideoCapture(stream_path)
         if not self.cap.isOpened():
             self.is_running = False
-            logging.error(f"Error: Could not open camera {stream_path}")
-            raise cv2.error()
+            logging.error(f"Could not open camera {stream_path}")
+            raise cv2.error(f"Could not open camera {stream_path}")
         else:
             self.is_running = True
             width = self.cap.get(cv2.CAP_PROP_FRAME_WIDTH)

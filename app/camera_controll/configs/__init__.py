@@ -64,7 +64,7 @@ class BaseConfig:
         self.path = path
         self.data = read_config(path)
 
-        if self.path.find("example") != -1:
+        if str(self.path).find("example") != -1:
             logging.warning("Please use the copy of examples files!")
             write_config(self.path.replace(".example", ""), self.data)
         

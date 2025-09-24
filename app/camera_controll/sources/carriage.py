@@ -211,8 +211,8 @@ class CarriageController:
     def save_position(self):
         """Write the current values of position in config file.:"""
         
-        self.config.LAST_X_POSITION = self.current_x_angle
-        self.config.LAST_Y_POSITION = self.current_y_angle
+        self.config.CARRIAGE["last_x_position"] = self.current_x_angle
+        self.config.CARRIAGE["last_y_position"] = self.current_y_angle
         self.config.write()
 
 def main(x_steps:int=0, y_degrees:int=0, start:bool=False):

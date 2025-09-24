@@ -1,5 +1,18 @@
+# python files
 .venv
 __pycache__
 *.swp
+
+# model artifacts
+*.pt
+*.onnx
+*.engine
+
+# config files
 *.conf
+
+# for calibration images
 *.jpg
+
+# directory for program outputs
+results/

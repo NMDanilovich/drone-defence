@@ -1,3 +1,4 @@
+import argparse
 from pathlib import Path
 import datetime
 from threading import Thread
@@ -7,6 +8,7 @@ import zmq
 import numpy as np
 
 from sources import VideoStream
+from configs import ConnactionsConfig
 
 directory = Path(__file__).parent
 RESULTS = directory / "results"
@@ -21,9 +23,10 @@ class Visualization(Thread):
         self.subscriber.connect(f"tcp://127.0.0.1:8000")
         self.subscriber.subscribe("")
 
-        # Hardcoded for now, should be dynamic
-        self.video_stream = VideoStream("rtsp://admin:Zxcvbnm01@192.168.85.206:554/Streaming/channels/101")
+        connactions = ConnactionsConfig()
+        self.video_stream = VideoStream(connactions.CAMERA_4["path"])
 
+        self.frame = None
         self.width = 1920
         self.hieght = 1080
 
@@ -41,8 +44,8 @@ class Visualization(Thread):
             frame, 
             (self.width // 2, self.hieght // 2 - 100), 
             (self.width // 2, self.hieght // 2 + 100),
-            (0, 255, 255),
-            3,
+            (0, 0, 0),
+            2,
             cv2.LINE_4
             
         )
@@ -50,8 +53,8 @@ class Visualization(Thread):
             frame, 
             (self.width // 2 + 100, self.hieght // 2), 
             (self.width // 2 - 100, self.hieght // 2 ),
-            (0, 255, 255),
-            3,
+            (0, 0, 0),
+            2,
             cv2.LINE_4
                 )
         
@@ -87,16 +90,17 @@ class Visualization(Thread):
     def stop(self):
         self.running = False
 
-    def run(self, show=False):
-        fourcc = cv2.VideoWriter_fourcc(*'XVID')
-        out = cv2.VideoWriter(self.save_path, fourcc, 30.0, (self.width, self.hieght), True)
-        
+    def run(self, show=False, write=False):
+        if write:
+            fourcc = cv2.VideoWriter_fourcc(*'XVID')
+            out = cv2.VideoWriter(self.save_path, fourcc, 30.0, (self.width, self.hieght), True)
+            
         try:
             while self.running:
-                frame = self.video_stream.read()
+                temp_frame = self.video_stream.read()
 
 
-                if frame is None:
+                if temp_frame is None:
                     continue
 
                 try:
@@ -104,14 +108,15 @@ class Visualization(Thread):
                 except zmq.Again:
                     data = None
 
-                self.drow_info(frame, data)
+                self.frame = self.drow_info(temp_frame, data)
 
-                out.write(frame)
-                print("Writed ...", end="\r")
+                if write:
+                    out.write(self.frame)
+                    print("Writed ...", end="\r")
 
                 if show:
-                    frame = cv2.resize(frame, (640, 420))
-                    cv2.imshow("Detection and Tracking", frame)
+                    self.frame = cv2.resize(self.frame, (640, 420))
+                    cv2.imshow("Detection and Tracking", self.frame)
 
                     key = cv2.waitKey(1)
                     if key == ord("q"):
@@ -120,12 +125,21 @@ class Visualization(Thread):
         except KeyboardInterrupt:
             pass
         finally:
-            print(f"Complite! Save video as {self.save_path}")
-            out.release()
+            if write:
+                print(f"Complite! Save video as {self.save_path}")
+                out.release()
+
             self.video_stream.stop()
             self.context.destroy()
             cv2.destroyAllWindows()
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser("Visualisation Service")
+    
+    parser.add_argument("--write", action="store_true", help="Writed video into results directory")
+    parser.add_argument("--show", action="store_true", help="Open window with frames from camera")
+    
+    args = parser.parse_args()
+
     vis = Visualization()
-    vis.run(show=False)
+    vis.run(write=args.write, show=args.show)

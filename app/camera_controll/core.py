@@ -1,3 +1,6 @@
+"""
+This module contains the main AI core for drone detection and tracking.
+"""
 import time
 from multiprocessing import Process
 import logging
@@ -14,7 +17,20 @@ logger = logging.getLogger("CoreServise")
 logger.setLevel(logging.DEBUG)
 
 class AICore(Process):
+    """
+    The main AI core process for drone detection and tracking.
+
+    This class manages the state of the system (overview, standby, tracking),
+    handles video streams from multiple cameras, runs object detection using YOLO,
+    and communicates tracking information to other processes.
+    """
     def __init__(self, daemon = None):
+        """
+        Initializes the AICore process.
+
+        Args:
+            daemon (bool, optional): Whether the process is a daemon. Defaults to None.
+        """
         super().__init__(daemon=daemon)
         # TODO change configs
         self.config = SystemConfig()
@@ -50,6 +66,7 @@ class AICore(Process):
 
 
     def _init_cameras(self):
+        """Initializes the video streams from the cameras specified in the config."""
         template = "rtsp://{}:{}@{}:{}/Streaming/channels/101"
 
         for i,  camera in enumerate(self.connactions.data.values()):
@@ -70,6 +87,12 @@ class AICore(Process):
                 self._track_index = i
 
     def get_overview_frames(self) -> list:
+        """
+        Reads and returns frames from all overview cameras.
+
+        Returns:
+            list: A list of frames from the overview cameras.
+        """
         frames = []
         for i, camera in enumerate(self.cameras):
             if i != self._track_index:
@@ -79,10 +102,27 @@ class AICore(Process):
         return frames
     
     def get_tracking_frame(self) -> np.ndarray:
+        """
+        Reads and returns a frame from the tracking camera.
+
+        Returns:
+            np.ndarray: The frame from the tracking camera.
+        """
         if self._track_index is not None:
             return self.cameras[self._track_index].read()
 
     def get_biggest_info(self, detection_results):
+        """
+        Finds the biggest detected drone from the detection results.
+
+        Args:
+            detection_results (list): A list of detection results from YOLO.
+
+        Returns:
+            tuple: A tuple containing the camera index and the bounding box
+                   of the biggest detected drone. Returns an empty tuple if no
+                   drone is found.
+        """
         
         max_area = 0
         biggest_info = ()
@@ -106,6 +146,15 @@ class AICore(Process):
         return biggest_info
 
     def get_angles(self, bbox):
+        """
+        Calculates the horizontal and vertical angles from the bounding box center.
+
+        Args:
+            bbox (list or tuple): The bounding box coordinates (x, y, w, h).
+
+        Returns:
+            tuple: A tuple containing the horizontal and vertical angles in degrees.
+        """
         x, y = bbox[:2]
 
         width = self.config.OVERVIEW["width_frame"]
@@ -119,6 +168,9 @@ class AICore(Process):
         return x_angles, y_angles
 
     def send_target(self) -> bool:
+        """
+        Sends the current target information via the publisher socket.
+        """
 
         if self.target is not None:
             message = self.target.__dict__
@@ -126,9 +178,17 @@ class AICore(Process):
             self.publisher.send_json(message)
 
     def reset(self):
+        """Resets the current target."""
         self.target = None
 
     def overview(self) -> None:
+        """
+        The overview state logic.
+
+        In this state, the system scans for drones using the overview cameras.
+        If a drone is detected, it initializes a target and transitions to the
+        standby state.
+        """
         while self.target is None:
             frames = self.get_overview_frames()
 
@@ -172,6 +232,13 @@ class AICore(Process):
                 time.sleep(self._overview_timeout)
 
     def standby(self) -> TrackObject:
+        """
+        The standby state logic.
+
+        In this state, the system attempts to acquire a lock on the target
+        using the tracking camera. If successful, it transitions to the tracking
+        state. If the target is lost, it may return to the overview state.
+        """
         tracked = False
         standby_time = time.time()
 
@@ -248,6 +315,13 @@ class AICore(Process):
 
 
     def tracking(self) -> TrackObject:
+        """
+        The tracking state logic.
+
+        In this state, the system continuously tracks the target using the
+        tracking camera and updates its position. If the target is lost for a
+        certain duration, it transitions back to the standby state.
+        """
         while time.time() - self.target.time < self._short_duration:
             frame = self.get_tracking_frame()
 
@@ -277,6 +351,12 @@ class AICore(Process):
         self.state = "standby"
 
     def run(self):
+        """
+        The main loop of the AICore process.
+
+        Initializes the system and then enters a loop to execute the logic
+        for the current state (overview, standby, or tracking).
+        """
         logger.info("System initialization...")
         self._init_connaction()
         self._init_cameras()
@@ -303,6 +383,9 @@ class AICore(Process):
                 camera.stop()
 
 def main():
+    """
+    The main function to start the AICore process.
+    """
     core = AICore()
     core.start()
 

@@ -1,3 +1,8 @@
+"""
+This script starts the tracker service.
+
+It launches the `tracker.py` script in a new process.
+"""
 from pathlib import Path
 from subprocess import Popen
 

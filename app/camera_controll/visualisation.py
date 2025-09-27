@@ -15,7 +15,20 @@ RESULTS = directory / "results"
 RESULTS.mkdir(exist_ok=True)
 
 class Visualization(Thread):
+    """
+    A class to visualize the video stream with object tracking information.
+
+    This class runs as a separate thread to continuously read frames from a video stream,
+    receive tracking information, draw bounding boxes and other data on the frames,
+    and save the output as a video file.
+    """
     def __init__(self):
+        """
+        Initializes the Visualization thread.
+
+        Sets up the ZeroMQ subscriber for receiving tracking data, initializes the video stream,
+        and prepares for saving the output video.
+        """
         super().__init__()
         self.context = zmq.Context.instance()
         self.subscriber = self.context.socket(zmq.SUB)
@@ -39,6 +52,17 @@ class Visualization(Thread):
         self.running = True
 
     def drow_info(self, frame, info=None):
+        """
+        Draws tracking information on the frame.
+
+        Args:
+            frame (np.ndarray): The video frame to draw on.
+            info (dict, optional): A dictionary containing tracking information.
+                                  Defaults to None.
+
+        Returns:
+            np.ndarray: The frame with the information drawn on it.
+        """
         
         cv2.line(
             frame, 
@@ -88,12 +112,25 @@ class Visualization(Thread):
         return frame
 
     def stop(self):
+        """Stops the visualization thread."""
         self.running = False
 
     def run(self, show=False, write=False):
+        """
+        The main loop of the visualization thread.
+
+        Reads frames, receives tracking data, draws information on the frames,
+        and saves the output video.
+
+        Args:
+            show (bool, optional): Whether to display the video feed in a window.
+                                   Defaults to False.
+            write (bool, optional): Whether to write the output video to a file.
+                                    Defaults to False.
+        """
         if write:
             fourcc = cv2.VideoWriter_fourcc(*'XVID')
-            out = cv2.VideoWriter(self.save_path, fourcc, 30.0, (self.width, self.hieght), True)
+            out = cv2.VideoWriter(str(self.save_path), fourcc, 30.0, (self.width, self.hieght), True)
             
         try:
             while self.running:

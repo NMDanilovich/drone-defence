@@ -1,3 +1,10 @@
+"""
+This module implements the tracking system for the drone defence project.
+
+It includes a PID controller for smooth camera movement and a TrackingSystem
+class that orchestrates the tracking process based on information from the
+AI core.
+"""
 import time
 import datetime
 import argparse
@@ -20,9 +27,27 @@ RESULTS = directory / "results"
 RESULTS.mkdir(exist_ok=True)
 
 class PID:
+    """
+    A Proportional-Integral-Derivative (PID) controller.
+
+    This class implements a PID controller which is widely used in control
+    systems for its simplicity and effectiveness.
+    """
     def __init__(self, kp: float, ki: float, kd: float, 
                  output_limits: Tuple[float, float] = (-180, 180),
                  setpoint: float = 0.0):
+        """
+        Initializes the PID controller.
+
+        Args:
+            kp (float): The proportional gain.
+            ki (float): The integral gain.
+            kd (float): The derivative gain.
+            output_limits (Tuple[float, float], optional): The minimum and maximum
+                                                          output values.
+                                                          Defaults to (-180, 180).
+            setpoint (float, optional): The desired setpoint. Defaults to 0.0.
+        """
         
         self.kp = kp
         self.ki = ki
@@ -35,6 +60,18 @@ class PID:
         self._prev_time = time.time()
         
     def update(self, measured_value: float, measurement_time: float = None) -> float:
+        """
+        Updates the PID controller with a new measured value.
+
+        Args:
+            measured_value (float): The current measured value.
+            measurement_time (float, optional): The timestamp of the measurement.
+                                                If None, the current time is used.
+                                                Defaults to None.
+
+        Returns:
+            float: The calculated output value.
+        """
 
         if measurement_time is not None:
             current_time = measurement_time
@@ -65,16 +102,35 @@ class PID:
         return output
         
     def reset(self):
+        """Resets the integral and previous error of the PID controller."""
         self._integral = 0.0
         self._prev_error = 0.0
         self._prev_time = time.time()
     
     def set_setpoint(self, setpoint: float):
+        """
+        Sets a new setpoint for the PID controller.
+
+        Args:
+            setpoint (float): The new setpoint.
+        """
         self.setpoint = setpoint
 
 class TrackingSystem:
+    """
+    The main class for the tracking system.
+
+    This class controls the camera carriage, receives tracking information
+    from the AI core, and uses a PID controller to smoothly track the target.
+    """
 
     def __init__(self, debug=False):
+        """
+        Initializes the TrackingSystem.
+
+        Args:
+            debug (bool, optional): Whether to run in debug mode. Defaults to False.
+        """
         self.controller = CarriageController()
 
         # self.x_pid = PID(kp=0.0935, ki=0.0, kd=0.0002)
@@ -90,10 +146,12 @@ class TrackingSystem:
             logger.setLevel(logging.DEBUG)
 
     def _init_connaction(self, filter_msg:str=""):
-        """Setting up connection to proxy
-        
+        """
+        Sets up the connection to the AI core's publisher.
+
         Args:
-            filter_msg (str): Filter for ZMQ listner messeges. Can be used for recive message from specific camera.
+            filter_msg (str, optional): A filter for ZMQ subscriber messages.
+                                        Defaults to "".
         """
         self.context = zmq.Context.instance()
         self.subscriber = self.context.socket(zmq.SUB)
@@ -102,6 +160,18 @@ class TrackingSystem:
         self.subscriber.subscribe(filter_msg)
 
     def get_object_info(self):
+        """
+        Receives and parses object information from the AI core.
+
+        Returns:
+            tuple: A tuple containing:
+                - new_msg (bool): Whether the message is new.
+                - tracked (bool): Whether the object is being tracked.
+                - absolute (tuple): The absolute coordinates of the object.
+                - bbox (list): The bounding box of the object.
+                - error (tuple): The tracking error.
+                - time (float): The timestamp of the detection.
+        """
         data = self.subscriber.recv_json()
 
         tracked = data["tracked"]
@@ -120,6 +190,7 @@ class TrackingSystem:
         return new_msg, tracked, absolute, bbox, error, time
 
     def save_results(self):
+        """Saves the PID controller's performance data to a plot."""
         x = np.arange(0, self._num_tracked)
         plt.plot(x, self._x_errors, color="brown", label='x error')
         plt.plot(x, self._x_signals, color="lime", label='x signal')
@@ -131,6 +202,12 @@ class TrackingSystem:
         plt.savefig(RESULTS.joinpath("pid.png"))  
 
     def run(self):
+        """
+        The main loop of the tracking system.
+
+        This method continuously receives tracking information and controls
+        the camera carriage to follow the target.
+        """
         logging.info("Controller initialization...")
         self._init_connaction()
         self.running = True
@@ -188,6 +265,13 @@ class TrackingSystem:
             self.context.destroy()
 
 def start_system(core=False, debug=False):
+    """
+    Starts the tracking system and optionally the AI core and visualization.
+
+    Args:
+        core (bool, optional): Whether to start the AI core. Defaults to False.
+        debug (bool, optional): Whether to start the visualization. Defaults to False.
+    """
 
     if debug:
         vis = Visualization()

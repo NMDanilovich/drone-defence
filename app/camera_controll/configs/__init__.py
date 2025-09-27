@@ -1,3 +1,9 @@
+"""
+This module handles reading and writing of configuration files.
+
+It provides functions to read and write .ini/.conf files and a base class
+for managing different configuration types.
+"""
 import logging
 import configparser
 from pathlib import Path
@@ -60,7 +66,19 @@ def write_config(path: str, config_data: dict):
         config.write(configfile)
 
 class BaseConfig:
+    """
+    A base class for handling configuration files.
+
+    This class reads a configuration file, sets its sections as attributes,
+    and provides a method to write changes back to the file.
+    """
     def __init__(self,  path: str = None):
+        """
+        Initializes the BaseConfig.
+
+        Args:
+            path (str, optional): The path to the configuration file. Defaults to None.
+        """
         self.path = path
         self.data = read_config(path)
 
@@ -77,7 +95,8 @@ class BaseConfig:
             setattr(self, key.upper(), value)
 
     def write(self):
-        """Write the last config changes
+        """
+        Write the current configuration back to the file.
         """
 
         for key, value in self.data.items():
@@ -86,13 +105,29 @@ class BaseConfig:
         write_config(self.path, self.data)
 
 class SystemConfig(BaseConfig):
+    """A class for managing the system configuration."""
     def __init__(self, path:str=None):
+        """
+        Initializes the SystemConfig.
+
+        Args:
+            path (str, optional): The path to the system configuration file. 
+                                  Defaults to 'system.conf' in the same directory.
+        """
         super().__init__(
             path=Path(__file__).parent.joinpath("system.conf") if path is None else path, 
         )
 
 class ConnactionsConfig(BaseConfig):
+    """A class for managing the connections configuration."""
     def __init__(self, path:str=None):
+        """
+        Initializes the ConnactionsConfig.
+
+        Args:
+            path (str, optional): The path to the connections configuration file. 
+                                  Defaults to 'connactions.conf' in the same directory.
+        """
         super().__init__(
             path=Path(__file__).parent.joinpath("connactions.conf") if path is None else path, 
         )

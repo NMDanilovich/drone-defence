@@ -37,7 +37,11 @@ class Visualization(Thread):
         self.subscriber.subscribe("")
 
         connactions = ConnactionsConfig()
-        self.video_stream = VideoStream(connactions.CAMERA_4["path"])
+        camera = connactions.CAMERA_4
+        template = "rtsp://{}:{}@{}:{}/Streaming/channels/101"
+        path = camera["path"] if camera["path"] else template.format(camera["login"], camera["password"], camera["ip"], camera["port"])
+        print(path)
+        self.video_stream = VideoStream(path)
 
         self.frame = None
         self.width = 1920

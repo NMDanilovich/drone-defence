@@ -59,7 +59,7 @@ class CarriageController:
         
         # Information (status) from controller
         self.contr_info: dict
-        self.update_info()
+        # self.update_info()
 
         # setup start position
         self.start_x_pos = self.config.CARRIAGE["start_x_position"]

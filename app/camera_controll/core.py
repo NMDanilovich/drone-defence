@@ -288,7 +288,7 @@ class AICore(Process):
                 if frame is None:
                     continue
 
-                detection_results = self.detector.track(
+                detection_results = self.detector.predict(
                     frame, 
                     imgsz=self.image_size,
                     conf=self.config.MODEL["tracking_conf"],
@@ -322,20 +322,29 @@ class AICore(Process):
         tracking camera and updates its position. If the target is lost for a
         certain duration, it transitions back to the standby state.
         """
+        mean_time = 0
+
         while time.time() - self.target.time < self._short_duration:
+            time_iter = time.time()
+
+            time_getting = time.time()
             frame = self.get_tracking_frame()
+            time_getting = time.time() - time_getting
 
             if frame is None:
                 continue
-
-            detection_results = self.detector.track(
+            
+            time_nn = time.time()
+            detection_results = self.detector.predict(
                 frame, 
                 imgsz=self.image_size,
                 conf=self.config.MODEL["tracking_conf"],
                 iou=self.config.MODEL["tracking_iou"],
                 verbose=False
                 )
+            time_nn = time.time() - time_nn
 
+            handling_time = time.time()
             info = self.get_biggest_info(detection_results)
 
             if info:
@@ -347,7 +356,20 @@ class AICore(Process):
                 self.target.update(error=(float(err_x), float(err_y)), box=bbox.cpu().tolist())
 
                 self.send_target()
-        
+            handling_time = time.time() - handling_time
+            
+            time_iter = time.time() - time_iter
+
+            print(f"durations: \n\titeration: {time_iter} \n\tframe getting: {time_getting} \n\tyolo: {time_nn} \n\thandling: {handling_time}")
+
+            if mean_time:
+                mean_time += time_nn
+                mean_time /= 2
+            else:
+                mean_time = time_nn
+
+            print(round(mean_time, 3) * 1000, "ms")
+
         self.state = "standby"
 
     def run(self):

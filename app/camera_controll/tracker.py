@@ -136,6 +136,7 @@ class TrackingSystem:
         # self.x_pid = PID(kp=0.0935, ki=0.0, kd=0.0002)
         # self.x_pid = PID(kp=0.083, ki=0.003, kd=0.013)
         self.x_pid = PID(kp=0.115, ki=0.00025, kd=0.0025)
+        # self.x_pid = PID(kp=1, ki=0, kd=0)
         self.y_pid = PID(kp=0.1, ki=0.003, kd=0.)
 
         self.running = False
@@ -222,10 +223,15 @@ class TrackingSystem:
         try:
             while self.running:
                 # moving, *position = self.controller.get_move_info()
+                time_itaration = time.time()
+
+                time_getting = time.time()
                 new_message, tracked, absolute, bbox, error, det_time = self.get_object_info()
+                time_getting = time.time() - time_getting
                 
                 if new_message:
                     if tracked:
+                        time_handle_info = time.time()
                         x_error = error[0]
                         y_error = -1 * error[1]
 
@@ -244,17 +250,28 @@ class TrackingSystem:
                         self._y_signals.append(y_output)
                         self._x_signals.append(x_output)
                         self._num_tracked += 1
+                        time_handle_info = time.time() - time_handle_info
                         
-                        self.controller.move_relative(x_output, y_output)
+                        time_move = time.time()
+                        self.controller.move_relative(x_output, 0)
+                        time_move = time.time() - time_move
 
                     else:
-                        self.controller.move_to_absolute(*absolute)
-
+                        time_handle_info = time.time()
                         self.x_pid.reset()
                         self.y_pid.reset()
+                        time_handle_info = time.time() - time_handle_info
+
+                        time_move = time.time()
+                        self.controller.move_to_absolute(*absolute)
+                        time_move = time.time() - time_move
             
                     # if self._num_tracked == 100:
                     #     break 
+
+                time_itaration = time.time() - time_itaration
+
+                print(f"time durations: \n\tget message:{time_getting} \n\thandle info:{time_handle_info} \n\tmove:{time_move} \n\titeration:{time_itaration}")
 
         except KeyboardInterrupt:
             self.running = False

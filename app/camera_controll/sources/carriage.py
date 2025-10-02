@@ -101,12 +101,12 @@ class CarriageController:
 
         # Update current position
         if self.min_x_angle is not None or self.max_x_angle is not None:
-            self.current_x_angle = np.clip(new_x, self.min_x_angle, self.max_x_angle, dtype=np.float)
+            self.current_x_angle = np.clip(new_x, self.min_x_angle, self.max_x_angle, dtype=float)
         else:
             self.current_x_angle = new_x
 
         if self.min_y_angle is not None or self.max_y_angle is not None:
-            self.current_y_angle = np.clip(new_y, self.min_y_angle, self.max_y_angle, dtype=np.float)
+            self.current_y_angle = np.clip(new_y, self.min_y_angle, self.max_y_angle, dtype=float)
         else:
             self.current_x_angle = new_y
         
@@ -132,12 +132,12 @@ class CarriageController:
 
         # Update current position
         if self.min_x_angle is not None or self.max_x_angle is not None:
-            self.current_x_angle = np.clip(x_angle, self.min_x_angle, self.max_x_angle, dtype=np.float)
+            self.current_x_angle = np.clip(x_angle, self.min_x_angle, self.max_x_angle, dtype=float)
         else:
             self.current_x_angle = x_angle
 
         if self.min_y_angle is not None or self.max_y_angle is not None:
-            self.current_y_angle = np.clip(y_angle, self.min_y_angle, self.max_y_angle, dtype=np.float)
+            self.current_y_angle = np.clip(y_angle, self.min_y_angle, self.max_y_angle, dtype=float)
         else:
             self.current_x_angle = y_angle
 
@@ -178,8 +178,8 @@ class CarriageController:
         self.update_info()
 
         if self.contr_info:
-            self.current_x_angle = np.float(self.contr_info["X"])
-            self.current_y_angle = np.float(self.contr_info["Y"])
+            self.current_x_angle = float(self.contr_info["X"])
+            self.current_y_angle = float(self.contr_info["Y"])
 
         return (self.current_x_angle, self.current_y_angle)
     
@@ -194,8 +194,8 @@ class CarriageController:
         self.update_info()
 
         if self.contr_info:
-            self.current_x_angle = np.float(self.contr_info["X"])
-            self.current_y_angle = np.float(self.contr_info["Y"])
+            self.current_x_angle = float(self.contr_info["X"])
+            self.current_y_angle = float(self.contr_info["Y"])
 
             status = self.contr_info["MOVING"] == "YES"
 

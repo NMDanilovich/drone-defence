@@ -70,3 +70,9 @@ def test_model_in_static():
         res.mkdir(exist_ok=True)
 
         data.to_csv("test_results.csv")
+
+def test_model_speed():
+    sys_conf = SystemConfig("./examples/test_system.conf")
+    model = YOLO(sys_conf.MODEL["path"], task="detect")
+
+    

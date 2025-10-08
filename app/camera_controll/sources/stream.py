@@ -30,26 +30,28 @@ class VideoStream:
 
         if self.is_running:
             logging.info(f"Initializate of stream {self.stream_path}")
+            
+            if gst and str(self.stream_path).startswith("rtsp") :
+                pipeline = self.create_rtsp_pipeline(self.stream_path)
+                self.cap = cv2.VideoCapture(pipeline, cv2.CAP_GSTREAMER)
+            elif gst and str(self.stream_path).startswith("/dev"):
+                pipeline = self.create_nvargus_pipeline(self.stream_path, self.width, self.height, self.fps)
+                self.cap = cv2.VideoCapture(pipeline, cv2.CAP_GSTREAMER)
+            elif gst:
+                raise ValueError("Please, specify path rtsp or /dev/* !")
+            else:
+                self.cap = cv2.VideoCapture(self.stream_path)
+
+            self.thread = Thread(target=self.update, daemon=True)
+            self.thread.start()
+        
         else:
             logging.error(f"Could not open camera {self.stream_path}")
 
-        if gst and str(self.stream_path).startswith("rtsp") :
-            pipeline = self.create_rtsp_pipeline(self.stream_path)
-            self.cap = cv2.VideoCapture(pipeline, cv2.CAP_GSTREAMER)
-        elif gst and str(self.stream_path).startswith("/dev"):
-            pipeline = self.create_nvargus_pipeline(self.stream_path, self.width, self.height, self.fps)
-            self.cap = cv2.VideoCapture(pipeline, cv2.CAP_GSTREAMER)
-        elif gst:
-            raise ValueError("Please, specify path rtsp or /dev/* !")
-        else:
-            self.cap = cv2.VideoCapture(self.stream_path)
 
-        if self.is_running:
-            self.thread = Thread(target=self.update, daemon=True)
-            self.thread.start()
 
     def collect_info(self, path):
-        temp_cap = cv2.VideoCapture(self.stream_path)
+        temp_cap = cv2.VideoCapture(self.stream_path, cv2.CAP_FFMPEG)
 
         if temp_cap.isOpened():
             self.width = temp_cap.get(cv2.CAP_PROP_FRAME_WIDTH)
@@ -107,16 +109,15 @@ class VideoStream:
         )
 
     @staticmethod
-    def create_nvargus_pipeline(path, cap_width=1920, cap_height=1080, frame_width=1920, frame_height=1080, fps=60, flip=0):
+    def create_nvargus_pipeline(path, cap_width=1920, cap_height=1080, frame_width=1920, frame_height=1080, fps=60):
         """Optimized nvargus pipeline"""
         return (
-            f"nvarguscamerasrc sensor-id={path} ! "
-            "queue max-size-buffers=1 ! "
-            "video/x-raw(memory:NVMM), "
-            f"width=(int){cap_width}, height=(int){cap_height}, "
+            f"nvarguscamerasrc sensor-id={path} sensor-mode=0! "
+            f"video/x-raw(memory:NVMM), width=(int){cap_width}, height=(int){cap_height}, "
             f"format=(string)NV12, framerate=(fraction){fps}/1 ! "
-            f"nvvidconv flip-method={flip} ! "
+            f"nvvidconv ! "
             f"video/x-raw, width=(int){frame_width}, height=(int){frame_height}, format=(string)BGRx ! "
             "videoconvert ! "
-            "video/x-raw, format=(string)BGR ! appsink max-buffers=1 drop=True"
+            "video/x-raw, format=(string)BGR ! "
+            "appsink max-buffers=1 drop=True"
         )

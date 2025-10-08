@@ -1,14 +1,11 @@
-cat /sys/devices/17000000.ga10b/devfreq/17000000.ga10b/min_freq
-cat /sys/devices/17000000.ga10b/devfreq/17000000.ga10b/max_freq
-cat /sys/devices/17000000.ga10b/devfreq/17000000.ga10b/cur_freq
-
-CPU_FREQ=2265600
-CPU=cpu1 #The number can be changed
-sudo sh -c "echo $CPU_FREQ > /sys/devices/system/cpu/$CPU/cpufreq/scaling_min_freq"
-sudo sh -c "echo $CPU_FREQ > /sys/devices/system/cpu/$CPU/cpufreq/scaling_max_freq"
-
-GPU_FREQ=1020750000
-sh -c "echo $GPU_FREQ > /sys/devices/17000000.ga10b/devfreq/17000000.ga10b/min_freq"
-sh -c "echo $GPU_FREQ > /sys/devices/17000000.ga10b/devfreq/17000000.ga10b/max_freq"
-
-jetson_clock --show
+sudo nvpmodel -m 0
+sudo jetson_clocks
+sudo su
+echo 1 > /sys/kernel/debug/bpmp/debug/clk/vi/mrq_rate_locked
+echo 1 > /sys/kernel/debug/bpmp/debug/clk/isp/mrq_rate_locked
+echo 1 > /sys/kernel/debug/bpmp/debug/clk/nvcsi/mrq_rate_locked
+echo 1 > /sys/kernel/debug/bpmp/debug/clk/emc/mrq_rate_locked
+cat /sys/kernel/debug/bpmp/debug/clk/vi/max_rate |tee /sys/kernel/debug/bpmp/debug/clk/vi/rate
+cat /sys/kernel/debug/bpmp/debug/clk/isp/max_rate | tee  /sys/kernel/debug/bpmp/debug/clk/isp/rate
+cat /sys/kernel/debug/bpmp/debug/clk/nvcsi/max_rate | tee /sys/kernel/debug/bpmp/debug/clk/nvcsi/rate
+cat /sys/kernel/debug/bpmp/debug/clk/emc/max_rate | tee /sys/kernel/debug/bpmp/debug/clk/emc/rate

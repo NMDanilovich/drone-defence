@@ -80,7 +80,7 @@ class AICore(Process):
                 port = camera["port"]
                 path = template.format(login, password, ip, port)
             
-            stream = VideoStream(path)
+            stream = VideoStream(path, gst=True)
             self.cameras.append(stream)
 
             if camera["track"]:

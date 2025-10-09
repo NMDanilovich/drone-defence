@@ -51,6 +51,8 @@ class VideoStream:
 
 
     def collect_info(self, path):
+        """Collacting information. Parse the width, height, fps from camera. If not open camera, is_running attribute is False."""
+
         temp_cap = cv2.VideoCapture(self.stream_path, cv2.CAP_FFMPEG)
 
         if temp_cap.isOpened():
@@ -93,7 +95,7 @@ class VideoStream:
             self.cap.release()
 
     @staticmethod
-    def create_rtsp_pipeline(url):
+    def create_rtsp_pipeline(url, output_width:int=1024, output_height:int=576):
         """Optimized RTSP pipeline for Jetson Orin"""
         return (
             f"rtspsrc location={url} latency=0 ! "
@@ -102,7 +104,7 @@ class VideoStream:
             "h265parse ! "
             "nvv4l2decoder enable-max-performance=1 ! "
             "nvvidconv ! "
-            "video/x-raw, format=BGRx ! "
+            f"video/x-raw, width=(int){output_width}, height=(int){output_height}, format=BGRx ! "
             "videoconvert ! "
             "video/x-raw, format=BGR ! "
             "appsink drop=true sync=false max-buffers=1"
@@ -110,7 +112,7 @@ class VideoStream:
 
     @staticmethod
     def create_nvargus_pipeline(path, cap_width=1920, cap_height=1080, frame_width=1920, frame_height=1080, fps=60):
-        """Optimized nvargus pipeline"""
+        """Optimized nvargus pipeline for Jetson Orin"""
         return (
             f"nvarguscamerasrc sensor-id={path} sensor-mode=0! "
             f"video/x-raw(memory:NVMM), width=(int){cap_width}, height=(int){cap_height}, "

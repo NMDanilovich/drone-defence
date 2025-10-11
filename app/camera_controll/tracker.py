@@ -18,6 +18,7 @@ from matplotlib import pyplot as plt
 
 from sources import CarriageController
 from visualisation import Visualization
+from configs import SystemConfig
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -133,10 +134,9 @@ class TrackingSystem:
         """
         self.controller = CarriageController()
 
-        # self.x_pid = PID(kp=0.0935, ki=0.0, kd=0.0002)
-        # self.x_pid = PID(kp=0.083, ki=0.003, kd=0.013)
-        self.x_pid = PID(kp=0.115, ki=0.00025, kd=0.0025)
-        self.y_pid = PID(kp=0.1, ki=0.003, kd=0.)
+        config = SystemConfig()
+        self.x_pid = PID(kp=config.PID["x_kp"], ki=config.PID["x_ki"], kd=config.PID["x_kd"])
+        self.y_pid = PID(kp=config.PID["y_kp"], ki=config.PID["y_ki"], kd=config.PID["y_kd"])
 
         self.running = False
         self._last_data = None # last data message from ai core 

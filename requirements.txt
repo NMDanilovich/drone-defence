@@ -1,16 +1,20 @@
 pyzmq>=1.0
 pyserial
 
-numpy==1.25.1
-onnx==1.18.0
-onnxruntime-gpu==1.22.0
-onnxslim==0.1.61
-opencv-python==4.11.0.86
+numpy==1.24.4
 
-tensorrt_cu12_bindings==10.12.0.36
-torch==2.5.1
-torchvision==0.20.1
+# ----- install from sources ------
+# opencv-python==4.11.0.86
+
+# ----- install from whls -------
+# torch==2.5.1
+# torchvision==0.20.1
+
 ultralytics==8.3.62
 ultralytics-thop==2.0.13
+onnxruntime-gpu==1.22.0
+onnxslim==0.1.61
+onnx==1.18.0
+
 requests==2.31.0
 uvicorn==0.15.0

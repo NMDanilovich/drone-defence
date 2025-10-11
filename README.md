@@ -23,6 +23,22 @@ drone_defence/
 └── .gitignore            # Файлы и директории, игнорируемые Git
 ```
 
+## Зависимости
+
+Зависимости:
+- Linux for tegra + jetson jetpack 6.2
+- Cuda 12.6
+- Gstreamer 
+- Python 3.10
+- OpenCV+cuda+gstreamer
+- Pytorch 2.8
+- Torchvision 0.22
+
+OpenCV устанавливается из исходников. В папке tools лежит скрипт для установки необходимой версии с поддержкой CUDA и Gstreamer. 
+Pytorch устанавливается из репозитория https://github.com/davidl-nv/torch/tree/main/torch-2.8 с использованием lfs. Так же для корректной установки библиотеки необходимо обновить setuptuls, скачать зависимости (libjpeg-dev libpng-dev libtiff-dev), и установить библиотеку от NVIDIA (https://developer.nvidia.com/cusparselt-downloads?target_os=Linux&target_arch=x86_64&Distribution=Ubuntu&target_version=22.04&target_type=deb_local)
+Зависимости от Python библиотек прописаны в requirements.txt.
+
+
 Дирректория `configs` содержжит следующие конфигурационные файлы:
 
 - connactions.example.conf

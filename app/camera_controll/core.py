@@ -86,6 +86,16 @@ class AICore(Process):
             if camera["track"]:
                 self._track_index = i
 
+    def _warmap_model(self):
+        """Warmap YOLO for fastest inference"""
+        dummy_input = np.random.randn(*self.image_size, 3)
+        for _ in range(10):
+            _ = self.detector.predict(
+                    dummy_input, 
+                    imgsz=self.image_size,
+                    verbose=False
+                    )
+
     def get_overview_frames(self) -> list:
         """
         Reads and returns frames from all overview cameras.
@@ -360,6 +370,7 @@ class AICore(Process):
         logger.info("System initialization...")
         self._init_connaction()
         self._init_cameras()
+        self._warmap_model()
         self.running = True
         
         try:

@@ -1,4 +1,5 @@
 from pathlib import Path
+import random
 import shutil
 
 # --- find images ---
@@ -10,12 +11,10 @@ images = IMAGES_PATH.glob("*.jpg")
 CALIB_SET = Path("./images")
 CALIB_SET.mkdir(exist_ok=True)
 
+random_set = random.sample(CALIB_SET, 300)
 
 # --- copy files ---
-for i, path in enumerate(images):
-    if i == 200:
-        break
-    
+for i, path in enumerate(random_set):
     new_name = str(i).zfill(5) + ".jpg" # example: 002.jpg 
     shutil.copyfile(path, CALIB_SET/new_name)
 

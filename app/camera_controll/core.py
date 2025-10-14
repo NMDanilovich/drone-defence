@@ -32,7 +32,6 @@ class AICore(Process):
             daemon (bool, optional): Whether the process is a daemon. Defaults to None.
         """
         super().__init__(daemon=daemon)
-        # TODO change configs
         self.config = SystemConfig()
         self.connactions = ConnactionsConfig()
 
@@ -47,6 +46,7 @@ class AICore(Process):
         self._short_duration = 5
         self._long_duration = 10
 
+        self.gst = False
         self.detector = YOLO(self.config.MODEL["path"], task="detect")
         self.image_size = (576, 1024)
         self.running = False
@@ -80,7 +80,7 @@ class AICore(Process):
                 port = camera["port"]
                 path = template.format(login, password, ip, port)
             
-            stream = VideoStream(path, gst=True)
+            stream = VideoStream(path, gst=self.gst)
             self.cameras.append(stream)
 
             if camera["track"]:

@@ -3,18 +3,17 @@ This module contains the main AI core for drone detection and tracking.
 """
 import time
 from multiprocessing import Process
-import logging
 
 from ultralytics import YOLO
 import numpy as np
 import zmq
 
+from sources.logs import get_logger
 from sources import VideoStream, coord_to_angle
 from sources.tracked_obj import TrackObject
 from configs import SystemConfig, ConnactionsConfig
 
-logger = logging.getLogger("CoreServise")
-logger.setLevel(logging.DEBUG)
+logger = get_logger("Core_serv")
 
 class AICore(Process):
     """
@@ -219,9 +218,9 @@ class AICore(Process):
             info = self.get_biggest_info(detection_results)
 
             if info:
-                index, bbox = info
+                camera_index, bbox = info
 
-                x_calib = self.config.CALIBRATION[f"camera_{index}"]
+                x_calib = self.config.CALIBRATION[f"camera_{camera_index}"]
                 y_calib = self.config.OVERVIEW["horizont"]
 
                 rel_x, rel_y = self.get_angles(bbox)
@@ -232,7 +231,7 @@ class AICore(Process):
                 absolute = (abs_x, abs_y)
 
                 # initializate target
-                self.target = TrackObject(absolute, bbox.cpu().tolist(), time=time.time())
+                self.target = TrackObject(camera_index, absolute, bbox.cpu().tolist(), time=time.time())
                 logger.info(f"Init target: {self.target}")
                 
                 self.state = "standby"

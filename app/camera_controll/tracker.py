@@ -16,16 +16,14 @@ import numpy as np
 import zmq
 from matplotlib import pyplot as plt
 
+from sources.logs import get_logger, LOGS_DIRECTORY
 from sources import CarriageController
 from visualisation import Visualization
 from configs import SystemConfig
 
-logger = logging.getLogger(__name__)
-logger.setLevel(logging.INFO)
+logger = get_logger("Tracker_serv")
 
-directory = Path(__file__).parent
-RESULTS = directory / "results"
-RESULTS.mkdir(exist_ok=True)
+RESULTS = LOGS_DIRECTORY
 
 class PID:
     """
@@ -174,20 +172,18 @@ class TrackingSystem:
         """
         data = self.subscriber.recv_json()
 
-        tracked = data["tracked"]
+        id = data["id"]
         absolute = data["abs"]
         bbox = data["box"]
         error = data["error"]
         time = data["time"]
 
-        if data == self._last_data:
-            new_msg = False
+        if id is not None:
+            tracked = True
         else:
-            new_msg = True
+            tracked = False
 
-        self._last_data = data
-
-        return new_msg, tracked, absolute, bbox, error, time
+        return tracked, absolute, bbox, id, error, time
 
     def save_results(self):
         """Saves the PID controller's performance data to a plot."""
@@ -208,7 +204,7 @@ class TrackingSystem:
         This method continuously receives tracking information and controls
         the camera carriage to follow the target.
         """
-        logging.info("Controller initialization...")
+        logger.info("Controller initialization...")
         self._init_connaction()
         self.running = True
         plt.plot()
@@ -222,43 +218,46 @@ class TrackingSystem:
         try:
             while self.running:
                 # moving, *position = self.controller.get_move_info()
-                new_message, tracked, absolute, bbox, error, det_time = self.get_object_info()
-                
-                if new_message:
-                    if tracked:
-                        x_error = error[0]
-                        y_error = -1 * error[1]
+                tracked, absolute, bbox, id, error, det_time = self.get_object_info()
+                logger.debug("Getting target info: "
+                             f"\n\tcoord: {absolute}"
+                             f"\n\tbbox {bbox}"
+                             f"\n\tcoord: {id}"
+                             f"\n\terror: {error}")
+                if tracked:
+                    x_error = error[0]
+                    y_error = -1 * error[1]
 
-                        self._y_errors.append(y_error)
-                        self._x_errors.append(x_error)
+                    self._y_errors.append(y_error)
+                    self._x_errors.append(x_error)
 
-                        x_output = self.x_pid.update(x_error)
-                        y_output = self.y_pid.update(y_error)
+                    x_output = self.x_pid.update(x_error)
+                    y_output = self.y_pid.update(y_error)
 
-                        logger.debug(f"x: {x_error} -> {x_output}")
-                        logger.debug(f"y: {y_error} -> {y_output}")
-                        
-                        dt_object = datetime.datetime.fromtimestamp(det_time)
-                        logger.debug(f"Tracked time: {dt_object} Current time: {datetime.datetime.now()}")
+                    logger.debug(f"x: {x_error} -> {x_output}")
+                    logger.debug(f"y: {y_error} -> {y_output}")
+                    
+                    dt_object = datetime.datetime.fromtimestamp(det_time)
+                    logger.debug(f"Tracked time: {dt_object} Current time: {datetime.datetime.now()}")
 
-                        self._y_signals.append(y_output)
-                        self._x_signals.append(x_output)
-                        self._num_tracked += 1
-                        
-                        self.controller.move_relative(x_output, y_output)
+                    self._y_signals.append(y_output)
+                    self._x_signals.append(x_output)
+                    self._num_tracked += 1
+                    
+                    self.controller.move_relative(x_output, y_output)
 
-                    else:
-                        self.controller.move_to_absolute(*absolute)
+                else:
+                    self.controller.move_to_absolute(*absolute)
 
-                        self.x_pid.reset()
-                        self.y_pid.reset()
+                    self.x_pid.reset()
+                    self.y_pid.reset()
             
                     # if self._num_tracked == 100:
                     #     break 
 
         except KeyboardInterrupt:
             self.running = False
-            logging.exception("Keyboard exit.")
+            logger.exception("Keyboard exit.")
         
         finally:
             self.save_results()

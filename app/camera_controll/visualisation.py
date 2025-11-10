@@ -7,12 +7,13 @@ import cv2
 import zmq
 import numpy as np
 
+from sources.logs import get_logger, LOGS_DIRECTORY
 from sources import VideoStream
 from configs import ConnactionsConfig
 
-directory = Path(__file__).parent
-RESULTS = directory / "results"
-RESULTS.mkdir(exist_ok=True)
+logger = get_logger("Visual_serv")
+
+RESULTS = LOGS_DIRECTORY
 
 class Visualization(Thread):
     """
@@ -49,7 +50,7 @@ class Visualization(Thread):
         template = "rtsp://{}:{}@{}:{}/Streaming/channels/101"
         path = camera["path"] if camera["path"] else template.format(camera["login"], camera["password"], camera["ip"], camera["port"])
         
-        self.video_stream = VideoStream(path)
+        self.video_stream = VideoStream(path, gst=False)
 
         self.frame = None
         self.width = 1920
@@ -78,8 +79,8 @@ class Visualization(Thread):
         
         cv2.line(
             frame, 
-            (self.width // 2, self.hieght // 2 - 100), 
-            (self.width // 2, self.hieght // 2 + 100),
+            (self.width // 2, self.hieght // 2 - 50), 
+            (self.width // 2, self.hieght // 2 + 50),
             (0, 0, 0),
             2,
             cv2.LINE_4
@@ -87,8 +88,8 @@ class Visualization(Thread):
         )
         cv2.line(
             frame, 
-            (self.width // 2 + 100, self.hieght // 2), 
-            (self.width // 2 - 100, self.hieght // 2 ),
+            (self.width // 2 + 50, self.hieght // 2), 
+            (self.width // 2 - 50, self.hieght // 2 ),
             (0, 0, 0),
             2,
             cv2.LINE_4

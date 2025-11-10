@@ -3,9 +3,10 @@ from dataclasses import dataclass
 
 @dataclass
 class TrackObject:
+    camera:int
     abs: tuple
     box: tuple
-    tracked: bool = False
+    id: int = None
     error: tuple = (None, None)
 
     time: float = time.time()
@@ -20,3 +21,10 @@ class TrackObject:
 
     def to_dict(self):
         return self.__dict__
+
+class Formatter:
+    def __init__(self):
+        pass
+
+    def __call__(self, *args, **kwds):
+        pass

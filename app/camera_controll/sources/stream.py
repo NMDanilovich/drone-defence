@@ -1,9 +1,11 @@
 from threading import Thread
-import logging
+from logs import get_logger
 import time
 
 import cv2
 import numpy as np
+
+logger = get_logger("Stream")
 
 class VideoStream:
     """VideoStream class. Run thread for RTSP Stream. 
@@ -25,16 +27,16 @@ class VideoStream:
         """
         self.stream_path = stream_path
         self.frame = None
-
-        self.collect_info(self.stream_path)
+        self.is_running = True
 
         if self.is_running:
-            logging.info(f"Initializate of stream {self.stream_path}")
+            logger.info(f"Initializate of stream {self.stream_path}")
             
             if gst and str(self.stream_path).startswith("rtsp") :
                 pipeline = self.create_rtsp_pipeline(self.stream_path)
                 self.cap = cv2.VideoCapture(pipeline, cv2.CAP_GSTREAMER)
             elif gst and str(self.stream_path).startswith("/dev"):
+                self.collect_info()
                 pipeline = self.create_nvargus_pipeline(self.stream_path, self.width, self.height, self.fps)
                 self.cap = cv2.VideoCapture(pipeline, cv2.CAP_GSTREAMER)
             elif gst:
@@ -46,11 +48,11 @@ class VideoStream:
             self.thread.start()
         
         else:
-            logging.error(f"Could not open camera {self.stream_path}")
+            logger.error(f"Could not open camera {self.stream_path}")
 
 
 
-    def collect_info(self, path):
+    def collect_info(self):
         """Collacting information. Parse the width, height, fps from camera. If not open camera, is_running attribute is False."""
 
         temp_cap = cv2.VideoCapture(self.stream_path, cv2.CAP_FFMPEG)
@@ -59,9 +61,7 @@ class VideoStream:
             self.width = temp_cap.get(cv2.CAP_PROP_FRAME_WIDTH)
             self.height = temp_cap.get(cv2.CAP_PROP_FRAME_HEIGHT)
             self.fps = temp_cap.get(cv2.CAP_PROP_FPS)
-            self.is_running = True
-        else:
-            self.is_running = False
+
 
         temp_cap.release()
 
@@ -71,13 +71,13 @@ class VideoStream:
 
             ret, frame = self.cap.read()
             if not ret:
-                logging.info(f"Error: Failed to read frame from camera {self.stream_path}")
+                logger.info(f"Error: Failed to read frame from camera {self.stream_path}")
                 self.is_running = False
                 break
             
             self.frame = frame
             #time.sleep(0.005) # Small delay to prevent excessive CPU usage
-        logging.info(f"End of stream {self.stream_path}")
+        logger.info(f"End of stream {self.stream_path}")
 
     def read(self) -> np.ndarray:
         """Read actual frame

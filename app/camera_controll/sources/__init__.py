@@ -7,7 +7,8 @@ sys.path.append(str(CONFIGS))
 from .carriage import CarriageController
 from .stream import VideoStream
 from .coord_utils import coord_to_angle, coord_to_steps
+from .logs import get_logger
 
 
 
-__add__ = [VideoStream, CarriageController, coord_to_angle, coord_to_steps]
+__add__ = [VideoStream, CarriageController, coord_to_angle, coord_to_steps, get_logger]

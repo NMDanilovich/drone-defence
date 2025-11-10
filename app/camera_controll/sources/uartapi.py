@@ -5,8 +5,9 @@ from threading import Thread
 
 import serial
 
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+from logs import get_logger
+
+logger = get_logger("Uart")
 
 JETSON_SERIAL = '/dev/ttyTHS0' # for Jetson UART
 DEFAULT_BAUDRATE = 115200

@@ -1,13 +1,12 @@
-import logging
 import time
 import argparse
 from threading import Thread
 
 import serial
 
-from logs import get_logger
+from .logs import get_logger
 
-logger = get_logger("Uart")
+logger = get_logger("Uart", terminal=False)
 
 JETSON_SERIAL = '/dev/ttyTHS0' # for Jetson UART
 DEFAULT_BAUDRATE = 115200

@@ -1,6 +1,4 @@
 import argparse
-import time
-import logging
 
 # -----------------DEBUG---------
 # import os
@@ -14,10 +12,10 @@ import numpy as np
 
 from configs import SystemConfig
 from .uartapi import Uart, JETSON_SERIAL
+from .logs import get_logger
 
 # Configure logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+logger = get_logger("Controller", terminal=False)
 
 
 class CarriageController:

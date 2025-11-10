@@ -13,7 +13,8 @@ from configs import ConnactionsConfig
 
 logger = get_logger("Visual_serv")
 
-RESULTS = LOGS_DIRECTORY
+RESULTS = LOGS_DIRECTORY.parent.joinpath("results")
+RESULTS.mkdir(exist_ok=True)
 
 class Visualization(Thread):
     """
@@ -106,8 +107,8 @@ class Visualization(Thread):
             if tracked:
                 color = (0, 255, 0)
                 x, y, w, h = [int(c) for c in bbox]
-                pt1 = (x - w // 2, y - h // 2)
-                pt2 = (x + w // 2, y + h // 2)
+                pt1 = ((x - w // 2)*self.width, (y - h // 2)*self.hieght)
+                pt2 = ((x + w // 2)*self.width, (y + h // 2)*self.hieght)
                 cv2.rectangle(frame, pt1, pt2, (0, 255, 0), 2)
                 cv2.putText(frame, "target", pt1, cv2.FONT_HERSHEY_COMPLEX, 1, (0, 0, 255), 2)
 

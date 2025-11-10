@@ -36,6 +36,15 @@ def read_config(path:str) -> dict:
                     config_dict[section][key] = True
                 elif "false" == value.lower():
                     config_dict[section][key] = False
+                elif value[0] in ("[(") and value[-1] in ("])"):
+                    # delete brackets
+                    if value[0] == "[":
+                        value = value.strip("[]")
+                    else:
+                        value = value.strip("()")
+
+                    value = tuple(int(num) for num in value.split(","))
+                    config_dict[section][key] = value
                 else:
                     config_dict[section][key] = int(value)
 

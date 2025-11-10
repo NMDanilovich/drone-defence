@@ -1,11 +1,11 @@
 from threading import Thread
-from logs import get_logger
-import time
 
 import cv2
 import numpy as np
 
-logger = get_logger("Stream")
+from .logs import get_logger
+
+logger = get_logger("Stream", terminal=False)
 
 class VideoStream:
     """VideoStream class. Run thread for RTSP Stream. 

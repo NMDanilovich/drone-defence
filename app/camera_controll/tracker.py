@@ -9,7 +9,6 @@ import time
 import datetime
 import argparse
 from typing import Tuple
-from pathlib import Path
 import logging
 
 import numpy as np
@@ -18,6 +17,7 @@ from matplotlib import pyplot as plt
 
 from sources.logs import get_logger, LOGS_DIRECTORY
 from sources import CarriageController
+from sources.bbox import BBox
 from visualisation import Visualization
 from configs import SystemConfig
 
@@ -178,10 +178,7 @@ class TrackingSystem:
         error = data["error"]
         time = data["time"]
 
-        if id is not None:
-            tracked = True
-        else:
-            tracked = False
+        tracked = data["tracked"]
 
         return tracked, absolute, bbox, id, error, time
 
@@ -219,11 +216,7 @@ class TrackingSystem:
             while self.running:
                 # moving, *position = self.controller.get_move_info()
                 tracked, absolute, bbox, id, error, det_time = self.get_object_info()
-                logger.debug("Getting target info: "
-                             f"\n\tcoord: {absolute}"
-                             f"\n\tbbox {bbox}"
-                             f"\n\tcoord: {id}"
-                             f"\n\terror: {error}")
+
                 if tracked:
                     x_error = error[0]
                     y_error = -1 * error[1]
@@ -254,6 +247,14 @@ class TrackingSystem:
             
                     # if self._num_tracked == 100:
                     #     break 
+                
+                # logic for shutting
+                bbox = BBox(*bbox, intager=False)
+                center = (0.5, 0.5)
+                if center in bbox:
+                    logger.info("BRRRRRRRRRRRRRRRRRRRRRRRRRRRR!!!!!")
+                    # self.controller.fire(1)
+                    # self.controller.fire(0)
 
         except KeyboardInterrupt:
             self.running = False

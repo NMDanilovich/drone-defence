@@ -171,6 +171,7 @@ class AICore(Process):
                     continue
 
                 x, y, w, h = result.boxes.xywh[0]
+
                 obj_area = w * h
 
                 if obj_area >= max_area:
@@ -312,7 +313,7 @@ class AICore(Process):
                     absolute = (abs_x, abs_y)
 
                     # initializate target
-                    self.target.update(absolute, bbox, tracked=False, error=(None, None))
+                    self.target.update(abs=absolute, box=bbox, tracked=False, error=(None, None))
                     logger.info(f"Update target from {index} cameras")
                 else:
                     logger.info(f"Waiting for target updates")
@@ -369,6 +370,7 @@ class AICore(Process):
                 imgsz=self.image_size,
                 conf=self.config.MODEL["tracking_conf"],
                 iou=self.config.MODEL["tracking_iou"],
+                # verbose=True
                 )
 
             info = self.get_biggest_info(detection_results)
@@ -379,7 +381,7 @@ class AICore(Process):
                 err_x, err_y = self.get_angles(bbox)
 
                 # update target
-                self.target.update(error=(float(err_x), float(err_y)), box=bbox)
+                self.target.update(error=(float(err_x), float(err_y)), box=bbox, tracked=True)
 
                 self.send_target()
         

@@ -1,8 +1,11 @@
 from typing import Iterable
 
 class BBox(object):
-    def __init__(self, x:int, y:int, w:int, h:int):
-        x, y, w, h = tuple(map(int, (x, y, w, h)))
+    def __init__(self, x:int, y:int, w:int, h:int, intager=True):
+        if intager:
+            x, y, w, h = tuple(map(int, (x, y, w, h)))
+        else:
+            x, y, w, h = tuple(map(float, (x, y, w, h)))
 
         self._xywh = x, y, w, h
         self._xyxy = x - w // 2,    y - h // 2,    x + w // 2,    y + h // 2

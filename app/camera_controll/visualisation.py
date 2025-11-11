@@ -7,11 +7,13 @@ import cv2
 import zmq
 import numpy as np
 
+from sources.logs import get_logger, LOGS_DIRECTORY
 from sources import VideoStream
 from configs import ConnactionsConfig
 
-directory = Path(__file__).parent
-RESULTS = directory / "results"
+logger = get_logger("Visual_serv")
+
+RESULTS = LOGS_DIRECTORY.parent.joinpath("results")
 RESULTS.mkdir(exist_ok=True)
 
 class Visualization(Thread):
@@ -37,11 +39,19 @@ class Visualization(Thread):
         self.subscriber.subscribe("")
 
         connactions = ConnactionsConfig()
-        camera = connactions.CAMERA_4
+        camera = None
+        for name in connactions.NAMES:
+            if connactions.data[name]["track"]:
+                camera = connactions.data[name]
+                break
+
+        if camera is None:
+            raise IndexError("Tracked camera is not found")
+        
         template = "rtsp://{}:{}@{}:{}/Streaming/channels/101"
         path = camera["path"] if camera["path"] else template.format(camera["login"], camera["password"], camera["ip"], camera["port"])
-        print(path)
-        self.video_stream = VideoStream(path)
+        
+        self.video_stream = VideoStream(path, gst=False)
 
         self.frame = None
         self.width = 1920
@@ -70,8 +80,8 @@ class Visualization(Thread):
         
         cv2.line(
             frame, 
-            (self.width // 2, self.hieght // 2 - 100), 
-            (self.width // 2, self.hieght // 2 + 100),
+            (self.width // 2, self.hieght // 2 - 50), 
+            (self.width // 2, self.hieght // 2 + 50),
             (0, 0, 0),
             2,
             cv2.LINE_4
@@ -79,8 +89,8 @@ class Visualization(Thread):
         )
         cv2.line(
             frame, 
-            (self.width // 2 + 100, self.hieght // 2), 
-            (self.width // 2 - 100, self.hieght // 2 ),
+            (self.width // 2 + 50, self.hieght // 2), 
+            (self.width // 2 - 50, self.hieght // 2 ),
             (0, 0, 0),
             2,
             cv2.LINE_4
@@ -97,8 +107,8 @@ class Visualization(Thread):
             if tracked:
                 color = (0, 255, 0)
                 x, y, w, h = [int(c) for c in bbox]
-                pt1 = (x - w // 2, y - h // 2)
-                pt2 = (x + w // 2, y + h // 2)
+                pt1 = ((x - w // 2)*self.width, (y - h // 2)*self.hieght)
+                pt2 = ((x + w // 2)*self.width, (y + h // 2)*self.hieght)
                 cv2.rectangle(frame, pt1, pt2, (0, 255, 0), 2)
                 cv2.putText(frame, "target", pt1, cv2.FONT_HERSHEY_COMPLEX, 1, (0, 0, 255), 2)
 

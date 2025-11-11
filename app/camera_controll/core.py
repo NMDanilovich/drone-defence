@@ -3,18 +3,17 @@ This module contains the main AI core for drone detection and tracking.
 """
 import time
 from multiprocessing import Process
-import logging
 
 from ultralytics import YOLO
 import numpy as np
 import zmq
 
-from sources import VideoStream, coord_to_angle
+from sources.logs import get_logger
+from sources import VideoStream, ncoord_to_angle
 from sources.tracked_obj import TrackObject
 from configs import SystemConfig, ConnactionsConfig
 
-logger = logging.getLogger("CoreServise")
-logger.setLevel(logging.DEBUG)
+logger = get_logger("Core_serv")
 
 class AICore(Process):
     """
@@ -32,7 +31,6 @@ class AICore(Process):
             daemon (bool, optional): Whether the process is a daemon. Defaults to None.
         """
         super().__init__(daemon=daemon)
-        # TODO change configs
         self.config = SystemConfig()
         self.connactions = ConnactionsConfig()
 
@@ -47,22 +45,32 @@ class AICore(Process):
         self._short_duration = 5
         self._long_duration = 10
 
-        self.detector = YOLO(self.config.MODEL["path"], task="detect")
-        self.image_size = (576, 1024)
+        self.gst = True
+        self.detector = YOLO(self.config.MODEL["path"], task="detect", verbose=True)
+        self.image_size = self.config.MODEL["image_size"]
+
         self.running = False
 
     def _init_connaction(self):
         """Initialization socket for processes connaction.
         """
 
-        self.context = zmq.Context.instance()
+        try:
+            self.context = zmq.Context.instance()
 
-        self.context.socket(zmq.PUB)
+            self.context.socket(zmq.PUB)
 
-        self.publisher = self.context.socket(zmq.PUB)
-        self.publisher.setsockopt(zmq.SNDHWM, 10)
-        self.publisher.setsockopt(zmq.RCVHWM, 10)
-        self.publisher.bind(f"tcp://127.0.0.1:8000")
+            self.publisher = self.context.socket(zmq.PUB)
+            self.publisher.setsockopt(zmq.SNDHWM, 10)
+            self.publisher.setsockopt(zmq.RCVHWM, 10)
+            self.publisher.bind(f"tcp://127.0.0.1:8000")
+        
+        except zmq.error.ZMQError as error:
+            logger.warning(f"Service connaction error {error}")
+            return False
+        else:
+            logger.info("Service connaction is ready!")
+            return True
 
 
     def _init_cameras(self):
@@ -80,11 +88,38 @@ class AICore(Process):
                 port = camera["port"]
                 path = template.format(login, password, ip, port)
             
-            stream = VideoStream(path)
+            stream = VideoStream(path, gst=self.gst)
             self.cameras.append(stream)
 
             if camera["track"]:
                 self._track_index = i
+        
+        # Checking the connection to the cameras
+        if len(self.cameras) != 0 and self._track_index is not None:
+            logger.info("Cameras is ready!")
+            return True
+        else:
+            logger.warning("The number of connected cameras is 0, or the tracking camera is not specified.")
+            return False
+
+    def _warmap_model(self):
+        """Warmap YOLO for fastest inference"""
+        
+        try:
+            for _ in range(10):
+                dummy_input = np.random.randn(*self.image_size, 3)
+                _ = self.detector.predict(
+                        dummy_input, 
+                        imgsz=self.image_size,
+                        verbose=False
+                        )
+            
+        except Exception as error:
+            logger.warning(f"Undefined detector error {error}")
+            return False
+        else:
+            logger.info("Detector is ready!")
+            return True
 
     def get_overview_frames(self) -> list:
         """
@@ -136,12 +171,16 @@ class AICore(Process):
                     continue
 
                 x, y, w, h = result.boxes.xywh[0]
+
                 obj_area = w * h
 
                 if obj_area >= max_area:
                     max_area = obj_area
 
-                    biggest_info = (camera_index, result.boxes.xywh[0])
+                    biggest_info = [camera_index, result.boxes.xywhn[0]]
+
+        if biggest_info:
+            biggest_info[1] = biggest_info[1].cpu().tolist()
 
         return biggest_info
 
@@ -157,13 +196,11 @@ class AICore(Process):
         """
         x, y = bbox[:2]
 
-        width = self.config.OVERVIEW["width_frame"]
         hor = self.config.OVERVIEW["horiz_angle"]
-        height = self.config.OVERVIEW["height_frame"]
         vert = self.config.OVERVIEW["vertic_angle"]
 
-        x_angles = coord_to_angle(x, width, hor)
-        y_angles = coord_to_angle(y, height, vert)
+        x_angles = ncoord_to_angle(x, hor)
+        y_angles = ncoord_to_angle(y, vert)
 
         return x_angles, y_angles
 
@@ -202,16 +239,15 @@ class AICore(Process):
                     imgsz=self.image_size,
                     conf=self.config.MODEL["overview_conf"],
                     iou=self.config.MODEL["overview_iou"],
-                    verbose=False
                     )
                 detection_results.append(result[0])
 
             info = self.get_biggest_info(detection_results)
 
             if info:
-                index, bbox = info
+                camera_index, bbox = info
 
-                x_calib = self.config.CALIBRATION[f"camera_{index}"]
+                x_calib = self.config.CALIBRATION[f"camera_{camera_index}"]
                 y_calib = self.config.OVERVIEW["horizont"]
 
                 rel_x, rel_y = self.get_angles(bbox)
@@ -222,8 +258,8 @@ class AICore(Process):
                 absolute = (abs_x, abs_y)
 
                 # initializate target
-                self.target = TrackObject(absolute, bbox.cpu().tolist(), time=time.time())
-                logger.info(f"Init target: {self.target}")
+                self.target = TrackObject(camera_index, absolute, bbox, time=time.time())
+                logger.info(f"Target initialization")
                 
                 self.state = "standby"
                 self.send_target()
@@ -256,7 +292,6 @@ class AICore(Process):
                         imgsz=self.image_size,
                         conf=self.config.MODEL["overview_conf"],
                         iou=self.config.MODEL["overview_iou"],
-                        verbose=False
                         )
                     detection_results.append(result[0])
                 
@@ -278,8 +313,10 @@ class AICore(Process):
                     absolute = (abs_x, abs_y)
 
                     # initializate target
-                    self.target.update(absolute, bbox.cpu().tolist(), tracked=False, error=(None, None))
-                    logger.info(f"OV. Update target: {self.target}")
+                    self.target.update(abs=absolute, box=bbox, tracked=False, error=(None, None))
+                    logger.info(f"Update target from {index} cameras")
+                else:
+                    logger.info(f"Waiting for target updates")
 
             else:
 
@@ -303,8 +340,8 @@ class AICore(Process):
 
                     _, bbox = info
                     err_x, err_y = self.get_angles(bbox)
-                    self.target.update(error=(float(err_x), float(err_y)), tracked=True, box=bbox.cpu().tolist())
-                    logger.info(f"T. Update target: {self.target}")
+                    self.target.update(error=(float(err_x), float(err_y)), tracked=True, box=bbox)
+                    logger.info(f"Update target from tracking camera")
             
             self.send_target()
 
@@ -333,7 +370,7 @@ class AICore(Process):
                 imgsz=self.image_size,
                 conf=self.config.MODEL["tracking_conf"],
                 iou=self.config.MODEL["tracking_iou"],
-                verbose=False
+                # verbose=True
                 )
 
             info = self.get_biggest_info(detection_results)
@@ -344,7 +381,7 @@ class AICore(Process):
                 err_x, err_y = self.get_angles(bbox)
 
                 # update target
-                self.target.update(error=(float(err_x), float(err_y)), box=bbox.cpu().tolist())
+                self.target.update(error=(float(err_x), float(err_y)), box=bbox, tracked=True)
 
                 self.send_target()
         
@@ -360,6 +397,7 @@ class AICore(Process):
         logger.info("System initialization...")
         self._init_connaction()
         self._init_cameras()
+        self._warmap_model()
         self.running = True
         
         try:
@@ -374,7 +412,7 @@ class AICore(Process):
                     self.tracking()
         except KeyboardInterrupt:
             self.running = False
-            logger.exception("Keyboard exit.")
+            logger.error("Keyboard exit.")
         
         finally:
             self.context.destroy()

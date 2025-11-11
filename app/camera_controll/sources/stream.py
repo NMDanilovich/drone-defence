@@ -1,14 +1,16 @@
 from threading import Thread
-import logging
-import time
 
 import cv2
 import numpy as np
 
+from .logs import get_logger
+
+logger = get_logger("Stream", terminal=False)
+
 class VideoStream:
     """VideoStream class. Run thread for RTSP Stream. 
     """
-    def __init__(self, stream_path=0):
+    def __init__(self, stream_path=0, gst=False):
         """VideoStream class. Run thread for RTSP Stream.
 
         Args:
@@ -18,27 +20,50 @@ class VideoStream:
             cv2.error: Could not open camera
 
         Examples:
-        >>> path = "rtsp://login:password:ip:port/path/to/stream"
+        >>> path = "rtsp://login:password@ip:port/path/to/stream"
         >>> stream = VideoStream(path)
         >>> frame = stream.read()
         >>> stream.stop()
         """
         self.stream_path = stream_path
-        self.cap = cv2.VideoCapture(stream_path)
-        if not self.cap.isOpened():
-            self.is_running = False
-            logging.error(f"Could not open camera {stream_path}")
-            raise cv2.error(f"Could not open camera {stream_path}")
-        else:
-            self.is_running = True
-            width = self.cap.get(cv2.CAP_PROP_FRAME_WIDTH)
-            height = self.cap.get(cv2.CAP_PROP_FRAME_HEIGHT)
-            logging.info(f"Initializate of stream: w={width} h={height}")
-
         self.frame = None
-        self.thread = Thread(target=self.update, daemon=True)
+        self.is_running = True
 
-        self.thread.start()
+        if self.is_running:
+            logger.info(f"Initializate of stream {self.stream_path}")
+            
+            if gst and str(self.stream_path).startswith("rtsp") :
+                pipeline = self.create_rtsp_pipeline(self.stream_path)
+                self.cap = cv2.VideoCapture(pipeline, cv2.CAP_GSTREAMER)
+            elif gst and str(self.stream_path).startswith("/dev"):
+                self.collect_info()
+                pipeline = self.create_nvargus_pipeline(self.stream_path, self.width, self.height, self.fps)
+                self.cap = cv2.VideoCapture(pipeline, cv2.CAP_GSTREAMER)
+            elif gst:
+                raise ValueError("Please, specify path rtsp or /dev/* !")
+            else:
+                self.cap = cv2.VideoCapture(self.stream_path)
+
+            self.thread = Thread(target=self.update, daemon=True)
+            self.thread.start()
+        
+        else:
+            logger.error(f"Could not open camera {self.stream_path}")
+
+
+
+    def collect_info(self):
+        """Collacting information. Parse the width, height, fps from camera. If not open camera, is_running attribute is False."""
+
+        temp_cap = cv2.VideoCapture(self.stream_path, cv2.CAP_FFMPEG)
+
+        if temp_cap.isOpened():
+            self.width = temp_cap.get(cv2.CAP_PROP_FRAME_WIDTH)
+            self.height = temp_cap.get(cv2.CAP_PROP_FRAME_HEIGHT)
+            self.fps = temp_cap.get(cv2.CAP_PROP_FPS)
+
+
+        temp_cap.release()
 
     def update(self):
         """Update frame loop in videostream"""
@@ -46,12 +71,13 @@ class VideoStream:
 
             ret, frame = self.cap.read()
             if not ret:
-                print(f"Error: Failed to read frame from camera {self.stream_path}")
+                logger.info(f"Error: Failed to read frame from camera {self.stream_path}")
                 self.is_running = False
                 break
             
             self.frame = frame
-            time.sleep(0.005) # Small delay to prevent excessive CPU usage
+            #time.sleep(0.005) # Small delay to prevent excessive CPU usage
+        logger.info(f"End of stream {self.stream_path}")
 
     def read(self) -> np.ndarray:
         """Read actual frame
@@ -63,8 +89,37 @@ class VideoStream:
     def stop(self):
         """Release the videostream.
         """
-        self.is_running = False
-        self.thread.join()
-        self.cap.release()
+        if self.is_running:
+            self.is_running = False
+            self.thread.join()
+            self.cap.release()
 
-        
+    @staticmethod
+    def create_rtsp_pipeline(url, output_width:int=1024, output_height:int=576):
+        """Optimized RTSP pipeline for Jetson Orin"""
+        return (
+            f"rtspsrc location={url} latency=0 ! "
+            "rtph265depay !"
+            "queue max-size-buffers=1 ! "
+            "h265parse ! "
+            "nvv4l2decoder enable-max-performance=1 ! "
+            "nvvidconv ! "
+            f"video/x-raw, width=(int){output_width}, height=(int){output_height}, format=BGRx ! "
+            "videoconvert ! "
+            "video/x-raw, format=BGR ! "
+            "appsink drop=true sync=false max-buffers=1"
+        )
+
+    @staticmethod
+    def create_nvargus_pipeline(path, cap_width=1920, cap_height=1080, frame_width=1920, frame_height=1080, fps=60):
+        """Optimized nvargus pipeline for Jetson Orin"""
+        return (
+            f"nvarguscamerasrc sensor-id={path} sensor-mode=0! "
+            f"video/x-raw(memory:NVMM), width=(int){cap_width}, height=(int){cap_height}, "
+            f"format=(string)NV12, framerate=(fraction){fps}/1 ! "
+            f"nvvidconv ! "
+            f"video/x-raw, width=(int){frame_width}, height=(int){frame_height}, format=(string)BGRx ! "
+            "videoconvert ! "
+            "video/x-raw, format=(string)BGR ! "
+            "appsink max-buffers=1 drop=True"
+        )

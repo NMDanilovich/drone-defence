@@ -21,7 +21,8 @@ def get_info(detection_results, drone_cls:int):
         return False
     
 def test_model_in_static():
-    sys_conf = SystemConfig("./examples/test_system.conf")
+    sys_conf = SystemConfig("app/camera_controll/tests/examples/system.conf")
+    videos = ConnactionsConfig(path="app/camera_controll/tests/examples/test_videos.conf")
     iou = 0.9
     
     conf = 1
@@ -33,7 +34,7 @@ def test_model_in_static():
     
     try:
         while conf > 0:
-            stream = VideoStream()
+            stream = VideoStream(videos.)
             start = time.time()
             num_pred = 0
             all_frames = 0
@@ -70,3 +71,9 @@ def test_model_in_static():
         res.mkdir(exist_ok=True)
 
         data.to_csv("test_results.csv")
+
+def test_model_speed():
+    sys_conf = SystemConfig("./examples/test_system.conf")
+    model = YOLO(sys_conf.MODEL["path"], task="detect")
+
+    

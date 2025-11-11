@@ -23,7 +23,20 @@ def coord_to_angle(coord:int, dim:int, angle:float) -> float:
         angle (float): angle of view of axis
     
     Returns:
-        float: angles for 
+        float: angles for engine movement
     """
 
     return angle * (0.5 - coord / dim)
+
+def ncoord_to_angle(ncoord:float, angle:float) -> float:
+    """Convertation axis coordinate to steps for carriage engine.
+
+    Args:
+        ncoord (int): axis coordinate on frame
+        angle (float): angle of view of axis
+    
+    Returns:
+        float: angles for engine movement
+    """
+
+    return angle * (0.5 - ncoord)

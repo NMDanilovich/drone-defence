@@ -127,20 +127,20 @@ class SystemConfig(BaseConfig):
             path=Path(__file__).parent.joinpath("system.conf") if path is None else path, 
         )
 
-class ConnactionsConfig(BaseConfig):
+class ConnectionsConfig(BaseConfig):
     """A class for managing the connections configuration."""
     def __init__(self, path:str=None):
         """
-        Initializes the ConnactionsConfig.
+        Initializes the ConnectionsConfig.
 
         Args:
             path (str, optional): The path to the connections configuration file. 
-                                  Defaults to 'connactions.conf' in the same directory.
+                                  Defaults to 'connections.conf' in the same directory.
         """
         super().__init__(
-            path=Path(__file__).parent.joinpath("connactions.conf") if path is None else path, 
+            path=Path(__file__).parent.joinpath("connections.conf") if path is None else path, 
         )
 
         self.NAMES = list(self.data.keys())
 
-__all__ = (SystemConfig, ConnactionsConfig)
+__all__ = (SystemConfig, ConnectionsConfig)

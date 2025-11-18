@@ -143,7 +143,7 @@ class TrackingSystem:
         if debug:
             logger.setLevel(logging.DEBUG)
 
-    def _init_connaction(self, filter_msg:str=""):
+    def _init_connection(self, filter_msg:str=""):
         """
         Sets up the connection to the AI core's publisher.
 
@@ -202,7 +202,7 @@ class TrackingSystem:
         the camera carriage to follow the target.
         """
         logger.info("Controller initialization...")
-        self._init_connaction()
+        self._init_connection()
         self.running = True
         plt.plot()
 
@@ -249,12 +249,14 @@ class TrackingSystem:
                     #     break 
                 
                 # logic for shutting
-                bbox = BBox(*bbox, intager=False)
+                bbox = BBox(*bbox, integer=False)
                 center = (0.5, 0.5)
+
                 if center in bbox:
                     logger.info("BRRRRRRRRRRRRRRRRRRRRRRRRRRRR!!!!!")
-                    # self.controller.fire(1)
-                    # self.controller.fire(0)
+                    self.controller.fire("fire")
+                else:
+                    self.controller.fire("stop")
 
         except KeyboardInterrupt:
             self.running = False
@@ -262,6 +264,7 @@ class TrackingSystem:
         
         finally:
             self.save_results()
+            self.controller.fire("stop")
             self.context.destroy()
 
 def start_system(core=False, debug=False):

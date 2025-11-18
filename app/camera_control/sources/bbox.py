@@ -1,14 +1,14 @@
 from typing import Iterable
 
 class BBox(object):
-    def __init__(self, x:int, y:int, w:int, h:int, intager=True):
-        if intager:
-            x, y, w, h = tuple(map(int, (x, y, w, h)))
+    def __init__(self, x:int, y:int, w:int, h:int, integer=True):
+        if integer:
+            self._xywh = int(x), int(y), int(w), int(h)
+            self._xyxy = x - w // 2,    y - h // 2,    x + w // 2,    y + h // 2
         else:
-            x, y, w, h = tuple(map(float, (x, y, w, h)))
+            self._xywh = float(x), float(y), float(w), float(h)
+            self._xyxy = x - w / 2,    y - h / 2,    x + w / 2,    y + h / 2
 
-        self._xywh = x, y, w, h
-        self._xyxy = x - w // 2,    y - h // 2,    x + w // 2,    y + h // 2
 
     def __getitem__(self, index):
         return self._xywh[index]
@@ -42,4 +42,3 @@ class BBox(object):
     @property
     def xywh(self):
         return self._xywh
-

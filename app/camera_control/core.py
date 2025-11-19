@@ -11,7 +11,7 @@ import zmq
 from sources.logs import get_logger
 from sources import VideoStream, ncoord_to_angle
 from sources.tracked_obj import TrackObject
-from configs import SystemConfig, ConnactionsConfig
+from configs import SystemConfig, ConnectionsConfig
 
 logger = get_logger("Core_serv")
 
@@ -32,7 +32,7 @@ class AICore(Process):
         """
         super().__init__(daemon=daemon)
         self.config = SystemConfig()
-        self.connactions = ConnactionsConfig()
+        self.connections = ConnectionsConfig()
 
         self.state = "overview" # "standby", "tracking"
         self._overview_timeout = self.config.OVERVIEW["timeout"]
@@ -51,8 +51,8 @@ class AICore(Process):
 
         self.running = False
 
-    def _init_connaction(self):
-        """Initialization socket for processes connaction.
+    def _init_connection(self):
+        """Initialization socket for processes connection.
         """
 
         try:
@@ -66,10 +66,10 @@ class AICore(Process):
             self.publisher.bind(f"tcp://127.0.0.1:8000")
         
         except zmq.error.ZMQError as error:
-            logger.warning(f"Service connaction error {error}")
+            logger.warning(f"Service connection error {error}")
             return False
         else:
-            logger.info("Service connaction is ready!")
+            logger.info("Service connection is ready!")
             return True
 
 
@@ -77,7 +77,7 @@ class AICore(Process):
         """Initializes the video streams from the cameras specified in the config."""
         template = "rtsp://{}:{}@{}:{}/Streaming/channels/101"
 
-        for i,  camera in enumerate(self.connactions.data.values()):
+        for i,  camera in enumerate(self.connections.data.values()):
             
             if camera["path"]:
                 path = camera["path"]
@@ -88,11 +88,15 @@ class AICore(Process):
                 port = camera["port"]
                 path = template.format(login, password, ip, port)
             
-            stream = VideoStream(path, gst=self.gst)
-            self.cameras.append(stream)
+            stream = VideoStream(path, gst=self.gst, out_frame=self.image_size)
 
             if camera["track"]:
                 self._track_index = i
+                stream.stop()
+                del stream
+                stream = VideoStream(path, gst=self.gst, in_frame=(2560, 1440), fps=30, out_frame=self.image_size)
+
+            self.cameras.append(stream)
         
         # Checking the connection to the cameras
         if len(self.cameras) != 0 and self._track_index is not None:
@@ -314,14 +318,14 @@ class AICore(Process):
 
                     # initializate target
                     self.target.update(abs=absolute, box=bbox, tracked=False, error=(None, None))
-                    logger.info(f"Update target from {index} cameras")
+                    logger.info(f"Update target from cameras {index}")
                 else:
                     logger.info(f"Waiting for target updates")
 
             else:
 
                 frame = self.get_tracking_frame()
-
+                
                 if frame is None:
                     continue
 
@@ -359,6 +363,10 @@ class AICore(Process):
         tracking camera and updates its position. If the target is lost for a
         certain duration, it transitions back to the standby state.
         """
+
+        if self.target is None:
+            self.target = TrackObject(0, (0, 119), (0, 0, 20, 20), time=time.time())
+
         while time.time() - self.target.time < self._short_duration:
             frame = self.get_tracking_frame()
 
@@ -372,8 +380,16 @@ class AICore(Process):
                 iou=self.config.MODEL["tracking_iou"],
                 # verbose=True
                 )
+            
+            detector_message = (
+                "Tracking info: "
+                f"Num objects: {len(detection_results[0])} "
+                f"{detection_results}"
+            )
 
+            logger.info(detector_message)
             info = self.get_biggest_info(detection_results)
+            # print(detection_results[0].boxes)
 
             if info:
                 _, bbox = info
@@ -395,7 +411,7 @@ class AICore(Process):
         for the current state (overview, standby, or tracking).
         """
         logger.info("System initialization...")
-        self._init_connaction()
+        self._init_connection()
         self._init_cameras()
         self._warmap_model()
         self.running = True

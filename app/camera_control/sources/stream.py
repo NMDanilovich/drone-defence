@@ -10,7 +10,7 @@ logger = get_logger("Stream", terminal=False)
 class VideoStream:
     """VideoStream class. Run thread for RTSP Stream. 
     """
-    def __init__(self, stream_path=0, gst=False):
+    def __init__(self, stream_path=0, in_frame=(1080, 1920), out_frame=(576, 1024), fps=60, gst=False):
         """VideoStream class. Run thread for RTSP Stream.
 
         Args:
@@ -27,43 +27,29 @@ class VideoStream:
         """
         self.stream_path = stream_path
         self.frame = None
-        self.is_running = True
 
-        if self.is_running:
-            logger.info(f"Initializate of stream {self.stream_path}")
-            
-            if gst and str(self.stream_path).startswith("rtsp") :
-                pipeline = self.create_rtsp_pipeline(self.stream_path)
-                self.cap = cv2.VideoCapture(pipeline, cv2.CAP_GSTREAMER)
-            elif gst and str(self.stream_path).startswith("/dev"):
-                self.collect_info()
-                pipeline = self.create_nvargus_pipeline(self.stream_path, self.width, self.height, self.fps)
-                self.cap = cv2.VideoCapture(pipeline, cv2.CAP_GSTREAMER)
-            elif gst:
-                raise ValueError("Please, specify path rtsp or /dev/* !")
-            else:
-                self.cap = cv2.VideoCapture(self.stream_path)
+        logger.info(f"Initializate of stream {self.stream_path}")
+        
+        if gst and str(self.stream_path).startswith("rtsp") :
+            pipeline = self.create_rtsp_pipeline(self.stream_path, out_frame[1], out_frame[0])
+            self.cap = cv2.VideoCapture(pipeline, cv2.CAP_GSTREAMER)
+        elif gst and str(self.stream_path).startswith("/dev"):
+            width, height = in_frame[1], in_frame[0]
+            pipeline = self.create_nvargus_pipeline(capture_width=width, capture_height=height, output_width=out_frame[1], output_height=out_frame[0], framerate=fps)
+            self.cap = cv2.VideoCapture(pipeline, cv2.CAP_GSTREAMER)
+        elif gst:
+            raise ValueError("Please, specify path rtsp or /dev/* !")
+        else:
+            self.cap = cv2.VideoCapture(self.stream_path, cv2.CAP_FFMPEG)
 
+        if self.cap.isOpened():
+            self.is_running = True
             self.thread = Thread(target=self.update, daemon=True)
             self.thread.start()
-        
+    
         else:
+            self.is_running = False
             logger.error(f"Could not open camera {self.stream_path}")
-
-
-
-    def collect_info(self):
-        """Collacting information. Parse the width, height, fps from camera. If not open camera, is_running attribute is False."""
-
-        temp_cap = cv2.VideoCapture(self.stream_path, cv2.CAP_FFMPEG)
-
-        if temp_cap.isOpened():
-            self.width = temp_cap.get(cv2.CAP_PROP_FRAME_WIDTH)
-            self.height = temp_cap.get(cv2.CAP_PROP_FRAME_HEIGHT)
-            self.fps = temp_cap.get(cv2.CAP_PROP_FPS)
-
-
-        temp_cap.release()
 
     def update(self):
         """Update frame loop in videostream"""
@@ -111,15 +97,14 @@ class VideoStream:
         )
 
     @staticmethod
-    def create_nvargus_pipeline(path, cap_width=1920, cap_height=1080, frame_width=1920, frame_height=1080, fps=60):
+    def create_nvargus_pipeline(capture_width=2560, capture_height=1440, output_width=1920, output_height=1080, framerate=30):
         """Optimized nvargus pipeline for Jetson Orin"""
         return (
-            f"nvarguscamerasrc sensor-id={path} sensor-mode=0! "
-            f"video/x-raw(memory:NVMM), width=(int){cap_width}, height=(int){cap_height}, "
-            f"format=(string)NV12, framerate=(fraction){fps}/1 ! "
-            f"nvvidconv ! "
-            f"video/x-raw, width=(int){frame_width}, height=(int){frame_height}, format=(string)BGRx ! "
-            "videoconvert ! "
-            "video/x-raw, format=(string)BGR ! "
+            "nvarguscamerasrc ! "
+            f"video/x-raw(memory:NVMM),width={capture_width}, height={capture_height}, framerate={framerate}/1, format=NV12 ! "
+            "nvvidconv ! "
+            f"video/x-raw, width=(int){output_width}, height=(int){output_height}, format=(string)BGRx !"
+            "videoconvert ! video/x-raw, format=(string)BGR ! "
             "appsink max-buffers=1 drop=True"
         )
+    

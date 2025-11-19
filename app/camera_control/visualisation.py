@@ -9,7 +9,7 @@ import numpy as np
 
 from sources.logs import get_logger, LOGS_DIRECTORY
 from sources import VideoStream
-from configs import ConnactionsConfig
+from configs import ConnectionsConfig
 
 logger = get_logger("Visual_serv")
 
@@ -38,11 +38,11 @@ class Visualization(Thread):
         self.subscriber.connect(f"tcp://127.0.0.1:8000")
         self.subscriber.subscribe("")
 
-        connactions = ConnactionsConfig()
+        connections = ConnectionsConfig()
         camera = None
-        for name in connactions.NAMES:
-            if connactions.data[name]["track"]:
-                camera = connactions.data[name]
+        for name in connections.NAMES:
+            if connections.data[name]["track"]:
+                camera = connections.data[name]
                 break
 
         if camera is None:
@@ -51,7 +51,7 @@ class Visualization(Thread):
         template = "rtsp://{}:{}@{}:{}/Streaming/channels/101"
         path = camera["path"] if camera["path"] else template.format(camera["login"], camera["password"], camera["ip"], camera["port"])
         
-        self.video_stream = VideoStream(path, gst=False)
+        self.video_stream = VideoStream(path, gst=True)
 
         self.frame = None
         self.width = 1920
@@ -106,14 +106,19 @@ class Visualization(Thread):
             
             if tracked:
                 color = (0, 255, 0)
-                x, y, w, h = [int(c) for c in bbox]
-                pt1 = ((x - w // 2)*self.width, (y - h // 2)*self.hieght)
-                pt2 = ((x + w // 2)*self.width, (y + h // 2)*self.hieght)
+                x, y, w, h = bbox
+                x = x*self.width
+                w = w*self.width
+                y = y*self.width
+                h = h*self.width
+
+                pt1 = (int((x - w // 2)*self.width), int((y - h // 2)*self.hieght))
+                pt2 = (int((x + w // 2)*self.width), int((y + h // 2)*self.hieght))
                 cv2.rectangle(frame, pt1, pt2, (0, 255, 0), 2)
                 cv2.putText(frame, "target", pt1, cv2.FONT_HERSHEY_COMPLEX, 1, (0, 0, 255), 2)
 
-                cv2.circle(frame, (x, y), 4, (0, 255, 0), -1)
-                cv2.putText(frame, str((x, y)), (x, y), cv2.FONT_HERSHEY_COMPLEX, 0.5, (0, 0, 255), 2)
+                cv2.circle(frame, (int(x), int(y)), 4, (0, 255, 0), -1)
+                cv2.putText(frame, str((x, y)), (int(x), int(y)), cv2.FONT_HERSHEY_COMPLEX, 0.5, (0, 0, 255), 2)
 
             else:
                 color = (0, 0, 255)
@@ -159,6 +164,7 @@ class Visualization(Thread):
                 except zmq.Again:
                     data = None
 
+                self.frame = temp_frame
                 self.frame = self.drow_info(temp_frame, data)
 
                 if write:

@@ -5,7 +5,7 @@ import pandas as pd
 from ultralytics import YOLO
 
 from app.camera_controll.sources.stream import VideoStream
-from app.camera_controll.configs import ConnactionsConfig, SystemConfig
+from app.camera_controll.configs import ConnectionsConfig, SystemConfig
 
 def get_info(detection_results, drone_cls:int):
     
@@ -22,7 +22,7 @@ def get_info(detection_results, drone_cls:int):
     
 def test_model_in_static():
     sys_conf = SystemConfig("app/camera_controll/tests/examples/system.conf")
-    videos = ConnactionsConfig(path="app/camera_controll/tests/examples/test_videos.conf")
+    videos = ConnectionsConfig(path="app/camera_controll/tests/examples/test_videos.conf")
     iou = 0.9
     
     conf = 1

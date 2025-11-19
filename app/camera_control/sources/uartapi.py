@@ -18,7 +18,7 @@ class Uart:
 
         Args:
             port (str, optional): Path to serial port device. Defaults to JETSON_SERIAL ('/dev/ttyTHS1').
-            baudrate (int, optional): Baudrate of connaction. Defaults to DEFAULT_BAUDRATE (115200).
+            baudrate (int, optional): Baudrate of connection. Defaults to DEFAULT_BAUDRATE (115200).
             is_blocking (bool, optional): Command sending mode. Defaults to True.
         """
         # sittings UART

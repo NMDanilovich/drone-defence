@@ -137,11 +137,12 @@ class TrackingSystem:
         self.y_pid = PID(kp=config.PID["y_kp"], ki=config.PID["y_ki"], kd=config.PID["y_kd"])
 
         self.running = False
-        self._last_data = None # last data message from ai core 
-        self.debug = debug
-        
+        self.rambo_threshold = config.SHOOTING["rambo_threshold"]
+
         if debug:
             logger.setLevel(logging.DEBUG)
+        else:
+            logger.setLevel(logging.INFO)
 
     def _init_connection(self, filter_msg:str=""):
         """
@@ -217,6 +218,7 @@ class TrackingSystem:
                 # moving, *position = self.controller.get_move_info()
                 tracked, absolute, bbox, id, error, det_time = self.get_object_info()
 
+                # moving logic
                 if tracked:
                     x_error = error[0]
                     y_error = -1 * error[1]
@@ -249,10 +251,19 @@ class TrackingSystem:
                     #     break 
                 
                 # logic for shutting
-                bbox = BBox(*bbox, type=float)
+                x, y, w, h = bbox
+                object_area = w * h
+                
+                if object_area > self.rambo_threshold:
+                    logger.info("Rambo shooting is ON!")
+                    rambo = True
+                else:
+                    rambo = False
+
+                bbox = BBox(x, y, w, h, type=float)
                 center = (0.5, 0.5)
 
-                if center in bbox:
+                if (center in bbox) or rambo:
                     logger.info("BRRRRRRRRRRRRRRRRRRRRRRRRRRRR!!!!!")
                     self.controller.fire("fire")
                 else:

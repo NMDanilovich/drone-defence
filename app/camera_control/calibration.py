@@ -1,4 +1,4 @@
-"""This script provides a command-line interface for calibrating and controlling a camera carriage.
+"""This script provides a command-line interface for calibrating and controling a camera carriage.
 
 It allows for interactive control, moving to a predefined start position, and making absolute or relative movements.
 """

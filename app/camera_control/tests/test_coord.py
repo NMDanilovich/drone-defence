@@ -1,4 +1,4 @@
-from app.camera_controll.sources import coord_to_angle, coord_to_steps
+from app.camera_control.sources import coord_to_angle, coord_to_steps
 
 from pytest import raises
 

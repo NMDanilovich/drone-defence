@@ -1,6 +1,6 @@
 import time
 
-from app.camera_controll.sources.stream import VideoStream
+from app.camera_control.sources.stream import VideoStream
 
 import numpy as np
 import cv2

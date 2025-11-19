@@ -1,4 +1,4 @@
-from app.camera_controll.sources.uartapi import Uart
+from app.camera_control.sources.uartapi import Uart
 
 SERIAL = "/dev/ttyTHS1"
 

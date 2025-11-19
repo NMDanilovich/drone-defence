@@ -10,7 +10,7 @@ def get_logger(name: str, encoding:str="utf-8", directory=LOGS_DIRECTORY, termin
     Args:
         name (str): Module name for logging file
         encoding (str): encoding message in file, by default "utf-8".
-        directory (str): path to logs directory, by default "drone-defence/app/camera_controll/logs".
+        directory (str): path to logs directory, by default "drone-defence/app/camera_control/logs".
         terminal (bool): flag for terminal output data logger, by default True.
 
     Examples:

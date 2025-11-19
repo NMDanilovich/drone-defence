@@ -1,7 +1,7 @@
 from ultralytics import YOLO
 import cv2
 
-from app.camera_controll.sources import VideoStream
+from app.camera_control.sources import VideoStream
 
 def test_pipeline():
         detector = YOLO("/home/jetson/drone-defence/models/yolo11s_drone_person.engine", task="detect")

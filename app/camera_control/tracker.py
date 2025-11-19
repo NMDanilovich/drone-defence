@@ -249,7 +249,7 @@ class TrackingSystem:
                     #     break 
                 
                 # logic for shutting
-                bbox = BBox(*bbox, integer=False)
+                bbox = BBox(*bbox, type=float)
                 center = (0.5, 0.5)
 
                 if center in bbox:

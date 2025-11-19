@@ -1,13 +1,9 @@
 from typing import Iterable
 
 class BBox(object):
-    def __init__(self, x:int, y:int, w:int, h:int, integer=True):
-        if integer:
-            self._xywh = int(x), int(y), int(w), int(h)
-            self._xyxy = x - w // 2,    y - h // 2,    x + w // 2,    y + h // 2
-        else:
-            self._xywh = float(x), float(y), float(w), float(h)
-            self._xyxy = x - w / 2,    y - h / 2,    x + w / 2,    y + h / 2
+    def __init__(self, x:int, y:int, w:int, h:int, type=int):
+        self._xywh = type(x), type(y), type(w), type(h)
+        self._xyxy = type(x - w // 2), type(y - h // 2), type(x + w // 2), type(y + h // 2)
 
 
     def __getitem__(self, index):

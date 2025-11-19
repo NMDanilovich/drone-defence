@@ -20,8 +20,9 @@ def read_config(path:str) -> dict:
     """
 
     config = configparser.ConfigParser()
+    print(path)
     config.read(path)
-    
+    print(config.sections())
     config_dict = {}
     for section in config.sections():
         config_dict[section] = {}
